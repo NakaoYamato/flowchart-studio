@@ -13,36 +13,50 @@ load_dotenv()
 
 app = FastAPI(title="FlowHierarchy Studio API")
 
-# プロジェクトのルートディレクトリと index.html のパス
 BASE_DIR = Path(__file__).resolve().parent.parent
 INDEX_HTML_PATH = BASE_DIR / "templates" / "index.html"
-
-# Firebase Admin SDK の初期化（多重初期化防止）
-if not firebase_admin._apps:
-    service_account_str = os.environ.get("FIREBASE_SERVICE_ACCOUNT_JSON")
-    if not service_account_str:
-        raise RuntimeError("環境変数 FIREBASE_SERVICE_ACCOUNT_JSON が設定されていません。")
-    
-    cred_dict = json.loads(service_account_str)
-    cred = credentials.Certificate(cred_dict)
-    firebase_admin.initialize_app(cred)
-
-db = firestore.client()
 COLLECTION_NAME = "flowchart_projects"
+
+def get_firestore_db():
+    """Firebaseを安全に初期化してFirestoreクライアントを返す（エラー原因も明確化）"""
+    if not firebase_admin._apps:
+        raw_json = os.environ.get("FIREBASE_SERVICE_ACCOUNT_JSON")
+        if not raw_json:
+            raise HTTPException(
+                status_code=500,
+                detail="Vercelに環境変数 FIREBASE_SERVICE_ACCOUNT_JSON が設定されていません（またはRedeployが必要です）。"
+            )
+        try:
+            # 貼り付け時に前後に余分なクォートが入っていた場合は除去
+            cleaned = raw_json.strip().strip("'").strip('"')
+            cred_dict = json.loads(cleaned)
+            # Vercel環境変数で改行文字がエスケープされた場合の補正
+            if "private_key" in cred_dict:
+                cred_dict["private_key"] = cred_dict["private_key"].replace("\\n", "\n")
+            cred = credentials.Certificate(cred_dict)
+            firebase_admin.initialize_app(cred)
+        except Exception as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Firebase秘密鍵JSONの読み込みに失敗しました: {str(e)}"
+            )
+    return firestore.client()
 
 @app.get("/")
 @app.get("/api/index")
 @app.get("/api/index.py")
 async def serve_editor():
-    """メインのフローチャートエディタ画面 (templates/index.html) をそのまま返す"""
+    """メイン画面を返す"""
     if not INDEX_HTML_PATH.exists():
         raise HTTPException(status_code=404, detail="templates/index.html が見つかりません")
     return FileResponse(INDEX_HTML_PATH, media_type="text/html")
 
 @app.post("/api/projects/{project_id}")
+@app.post("/api/index/api/projects/{project_id}")
 async def save_project(project_id: str, payload: Dict[str, Any]):
-    """フローチャートの全階層データをFirestore本番環境へ保存する"""
+    """Firestore本番環境へ保存する"""
     try:
+        db = get_firestore_db()
         doc_ref = db.collection(COLLECTION_NAME).document(project_id)
         doc_ref.set({
             "projectId": project_id,
@@ -51,17 +65,21 @@ async def save_project(project_id: str, payload: Dict[str, Any]):
             "updatedAt": firestore.SERVER_TIMESTAMP
         })
         return {"status": "ok", "projectId": project_id}
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Firestore保存エラー: {str(e)}")
 
 @app.get("/api/projects/{project_id}")
+@app.get("/api/index/api/projects/{project_id}")
 async def load_project(project_id: str):
-    """指定したproject_idのデータをFirestoreから読み込む"""
+    """Firestoreから読み込む"""
     try:
+        db = get_firestore_db()
         doc_ref = db.collection(COLLECTION_NAME).document(project_id)
         doc = doc_ref.get()
         if not doc.exists:
-            raise HTTPException(status_code=404, detail="Project not found")
+            raise HTTPException(status_code=404, detail=f"指定されたID '{project_id}' のデータはまだ保存されていません。")
         data = doc.to_dict()
         if "updatedAt" in data:
             data["updatedAt"] = str(data["updatedAt"])
@@ -69,4 +87,4 @@ async def load_project(project_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Firestore読込エラー: {str(e)}")

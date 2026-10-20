@@ -1620,7 +1620,7 @@
     /**************************************************************
      * 9. Step 3: Python (FastAPI) + Firebase 本番環境 API通信
      **************************************************************/
-    document.getElementById('btn-cloud-save').addEventListener('click', async () => {
+      document.getElementById('btn-cloud-save').addEventListener('click', async () => {
       const pid = document.getElementById('project-id-input').value.trim();
       if (!pid) return showToast('プロジェクトIDを入力してください');
       projectData.projectId = pid;
@@ -1631,11 +1631,36 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(projectData)
         });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.detail || `HTTP ${res.status}`);
+        }
         showToast(`Firebaseへ保存しました (ID: ${pid})`);
       } catch (err) {
         console.error(err);
-        showToast('保存エラー: Pythonサーバーが起動しているか確認してください');
+        showToast(`保存エラー: ${err.message}`);
+      }
+    });
+
+    document.getElementById('btn-cloud-load').addEventListener('click', async () => {
+      const pid = document.getElementById('project-id-input').value.trim();
+      if (!pid) return showToast('プロジェクトIDを入力してください');
+
+      try {
+        const res = await fetch(`/api/projects/${encodeURIComponent(pid)}`);
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.detail || `HTTP ${res.status}`);
+        }
+        const loaded = await res.json();
+        projectData = loaded;
+        selectedNodeIds.clear();
+        selectedEdgeId = null;
+        render();
+        showToast(`Firebaseから読み込みました (ID: ${pid})`);
+      } catch (err) {
+        console.error(err);
+        showToast(`読込エラー: ${err.message}`);
       }
     });
 
