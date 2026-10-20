@@ -45,33 +45,38 @@ def get_firestore_db():
 @app.get("/")
 @app.get("/api/index")
 @app.get("/api/index.py")
-async def serve_editor():
-    """メイン画面を返す"""
+async def serve_editor(project_id: str = None):
+    """project_idパラメータがあればFirestoreから読込、なければメイン画面HTMLを返す"""
+    if project_id:
+        return await load_project(project_id)
     if not INDEX_HTML_PATH.exists():
         raise HTTPException(status_code=404, detail="templates/index.html が見つかりません")
     return FileResponse(INDEX_HTML_PATH, media_type="text/html")
 
+@app.post("/")
+@app.post("/api/index")
+@app.post("/api/index.py")
 @app.post("/api/projects/{project_id}")
-@app.post("/api/index/api/projects/{project_id}")
-async def save_project(project_id: str, payload: Dict[str, Any]):
-    """Firestore本番環境へ保存する"""
+async def save_project(payload: Dict[str, Any], project_id: str = None):
+    """Firestore本番環境へ保存する（URL書き換えにも完全対応）"""
     try:
+        # URLパスから取得できない場合はJSONの中身の projectId を使う
+        target_id = project_id or payload.get("projectId") or "default_project"
         db = get_firestore_db()
-        doc_ref = db.collection(COLLECTION_NAME).document(project_id)
+        doc_ref = db.collection(COLLECTION_NAME).document(target_id)
         doc_ref.set({
-            "projectId": project_id,
+            "projectId": target_id,
             "currentLayerId": payload.get("currentLayerId", "root"),
             "layers": payload.get("layers", {}),
             "updatedAt": firestore.SERVER_TIMESTAMP
         })
-        return {"status": "ok", "projectId": project_id}
+        return {"status": "ok", "projectId": target_id}
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Firestore保存エラー: {str(e)}")
 
 @app.get("/api/projects/{project_id}")
-@app.get("/api/index/api/projects/{project_id}")
 async def load_project(project_id: str):
     """Firestoreから読み込む"""
     try:
