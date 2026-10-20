@@ -31,6 +31,8 @@ db = firestore.client()
 COLLECTION_NAME = "flowchart_projects"
 
 @app.get("/")
+@app.get("/api/index")
+@app.get("/api/index.py")
 async def serve_editor():
     """メインのフローチャートエディタ画面 (templates/index.html) をそのまま返す"""
     if not INDEX_HTML_PATH.exists():
