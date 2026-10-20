@@ -41,13 +41,13 @@
     .header-left, .header-center, .header-right {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 6px;
     }
     .app-title {
       font-weight: 700;
       font-size: 15px;
       color: #60a5fa;
-      margin-right: 8px;
+      margin-right: 4px;
       white-space: nowrap;
     }
     .btn {
@@ -71,14 +71,17 @@
     .btn-success:hover { background: #059669; }
     .btn-danger { background: #ef4444; border-color: #dc2626; color: #fff; }
     .btn-danger:hover { background: #dc2626; }
-    .input-sm {
+    .project-badge {
       background: #181a1f;
       border: 1px solid #3e4451;
-      color: #fff;
-      padding: 5px 8px;
-      border-radius: 5px;
+      color: #93c5fd;
+      padding: 5px 10px;
+      border-radius: 6px;
       font-size: 12px;
-      width: 130px;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
     }
 
     /* Breadcrumb Bar */
@@ -234,8 +237,94 @@
       padding: 7px 9px;
       border-radius: 5px;
       font-size: 12px;
+      user-select: text;
     }
     .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+    /* Project Selector Modal (起動時＆一覧表示) */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(10, 12, 16, 0.82);
+      backdrop-filter: blur(4px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 90;
+    }
+    .modal-backdrop.open { display: flex; }
+    .modal-card {
+      background: #21252b;
+      border: 1px solid #3e4451;
+      border-radius: 12px;
+      width: 620px;
+      max-width: 94vw;
+      max-height: 86vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.6);
+      overflow: hidden;
+    }
+    .modal-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .modal-header h2 { font-size: 16px; color: #fff; }
+    .modal-body {
+      padding: 18px 20px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+    .new-project-box {
+      background: #181a1f;
+      border: 1px solid #333842;
+      padding: 14px;
+      border-radius: 8px;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+    .project-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-height: 360px;
+      overflow-y: auto;
+    }
+    .project-item {
+      background: #181a1f;
+      border: 1px solid #333842;
+      border-radius: 8px;
+      padding: 12px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+      transition: 0.15s;
+    }
+    .project-item:hover {
+      border-color: var(--accent);
+      background: rgba(59, 130, 246, 0.08);
+    }
+    .project-item-info {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .project-item-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: #60a5fa;
+    }
+    .project-item-meta {
+      font-size: 11px;
+      color: var(--text-sub);
+    }
 
     /* Toast Notification */
     #toast {
@@ -252,7 +341,7 @@
       opacity: 0;
       pointer-events: none;
       transition: opacity 0.25s;
-      z-index: 100;
+      z-index: 120;
     }
     #toast.show { opacity: 1; }
   </style>
@@ -263,7 +352,8 @@
   <header>
     <div class="header-left">
       <button class="btn" id="btn-toggle-left" title="左パネルの表示切替">◀ 左パネル</button>
-      <span class="app-title">FlowHierarchy Studio</span>
+      <span class="app-title">FlowHierarchy</span>
+      <button class="btn" id="btn-open-modal" title="プロジェクト一覧を開く">📋 プロジェクト一覧</button>
       <button class="btn btn-primary" id="btn-add-rect">＋ 矩形追加</button>
       <button class="btn" id="btn-add-container">＋ コンテナ追加</button>
     </div>
@@ -272,18 +362,21 @@
       <button class="btn" id="btn-copy" title="Ctrl+C">コピー</button>
       <button class="btn" id="btn-paste" title="Ctrl+V">貼り付け</button>
       <button class="btn btn-danger" id="btn-delete" title="Delete">削除</button>
-      <button class="btn" id="btn-reset-view">視点リセット (100%)</button>
+      <button class="btn" id="btn-reset-view">視点100%</button>
     </div>
 
     <div class="header-right">
-      <input type="text" id="project-id-input" class="input-sm" value="demo_project_01" placeholder="プロジェクトID">
-      <button class="btn btn-success" id="btn-cloud-save">☁ 保存 (Firebase)</button>
-      <button class="btn" id="btn-cloud-load">📂 読込</button>
+      <div class="project-badge" title="現在開いているプロジェクトID（URLも連動します）">
+        <span>📁</span>
+        <span id="current-project-label">未選択</span>
+      </div>
+      <button class="btn" id="btn-copy-url" title="このプロジェクトの専用URLをコピー">🔗 URLコピー</button>
+      <button class="btn btn-success" id="btn-cloud-save">☁ 保存</button>
       <button class="btn" id="btn-toggle-right" title="右パネルの表示切替">右パネル ▶</button>
     </div>
   </header>
 
-  <!-- Subbar (Breadcrumbs & Controls Guide) -->
+  <!-- Subbar -->
   <div class="subbar">
     <div class="breadcrumbs" id="breadcrumbs"></div>
     <div class="hint-text">
@@ -314,7 +407,6 @@
     <main id="canvas-container">
       <svg id="canvas-svg">
         <defs>
-          <!-- 画面移動・ズームに完全追従するドットグリッド -->
           <pattern id="grid-pattern" width="24" height="24" patternUnits="userSpaceOnUse">
             <circle cx="2" cy="2" r="1.3" fill="#cbd5e1"></circle>
           </pattern>
@@ -326,10 +418,8 @@
           </marker>
         </defs>
 
-        <!-- 背景グリッド -->
         <rect id="grid-bg" width="100%" height="100%" fill="url(#grid-pattern)"></rect>
 
-        <!-- ズーム・パン変換グループ -->
         <g id="viewport">
           <g id="containers-layer"></g>
           <g id="edges-layer"></g>
@@ -354,7 +444,6 @@
         <button class="btn btn-danger" id="mt-del" style="padding:3px 8px;">削除</button>
       </div>
 
-      <!-- ダブルクリック時のインライン文字入力欄 -->
       <textarea id="inline-editor"></textarea>
     </main>
 
@@ -368,7 +457,6 @@
           キャンバス上の矩形・コンテナ・矢印をクリックするか、左ドラッグで範囲選択してください。
         </div>
 
-        <!-- 単一/複数ノード編集フォーム -->
         <div id="prop-node" style="display:none;">
           <div id="prop-multi-badge" style="display:none; background:#1e3a8a; color:#93c5fd; padding:6px 10px; border-radius:5px; font-size:12px; margin-bottom:10px; font-weight:600;"></div>
           <div class="form-group" id="prop-text-group">
@@ -408,7 +496,6 @@
           </button>
         </div>
 
-        <!-- エッジ（矢印）編集フォーム -->
         <div id="prop-edge" style="display:none;">
           <div class="form-group">
             <label>矢印のラベル</label>
@@ -423,102 +510,88 @@
     </aside>
   </div>
 
+  <!-- 起動時・切替時のプロジェクト選択モーダル -->
+  <div class="modal-backdrop" id="project-modal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2>📋 プロジェクトを選択 または 新規作成</h2>
+        <button class="btn" id="btn-close-modal">閉じる ✕</button>
+      </div>
+      <div class="modal-body">
+        <div>
+          <div class="panel-title">新規プロジェクトを作成</div>
+          <div class="new-project-box">
+            <input type="text" id="new-project-input" class="form-control" placeholder="新しいプロジェクト名 (例: game_system_flow)" style="flex:1;">
+            <button class="btn btn-primary" id="btn-create-project">＋ 新規作成して開く</button>
+          </div>
+        </div>
+
+        <div>
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <div class="panel-title" style="margin-bottom:0;">Firebase 保存済みプロジェクト一覧</div>
+            <button class="btn" id="btn-refresh-list" style="padding:3px 8px; font-size:11px;">🔄 更新</button>
+          </div>
+          <div class="project-list" id="project-list-container">
+            <div style="color:var(--text-sub); font-size:12px; padding:12px;">読み込み中...</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div id="toast"></div>
 
   <script>
     /**************************************************************
-     * 1. 初期プロジェクトデータ構造 (Firestore保存互換スキーマ)
+     * 1. プロジェクトデータ初期化テンプレート
      **************************************************************/
-    let projectData = {
-      projectId: "demo_project_01",
-      currentLayerId: "root",
-      layers: {
-        "root": {
-          id: "root",
-          name: "メイン画面",
-          parentLayerId: null,
-          parentNodeId: null,
-          nodes: [
-            {
-              id: "cont_1", type: "container", text: "認証・セッション管理グループ",
-              x: 180, y: 90, width: 520, height: 310,
-              color: "#e2e8f0", fontSize: 14, fontFamily: "'Segoe UI', 'Meiryo', sans-serif",
-              parentGroupId: null, childLayerId: null
-            },
-            {
-              id: "node_1", type: "rect", text: "1. ユーザーログイン要求",
-              x: 220, y: 160, width: 190, height: 85,
-              color: "#dbeafe", fontSize: 14, fontFamily: "'Segoe UI', 'Meiryo', sans-serif",
-              parentGroupId: "cont_1", childLayerId: "layer_auth"
-            },
-            {
-              id: "node_2", type: "rect", text: "2. トークン発行処理",
-              x: 470, y: 160, width: 190, height: 85,
-              color: "#dcfce7", fontSize: 14, fontFamily: "'Segoe UI', 'Meiryo', sans-serif",
-              parentGroupId: "cont_1", childLayerId: null
-            },
-            {
-              id: "node_3", type: "rect", text: "3. ダッシュボード遷移",
-              x: 780, y: 160, width: 190, height: 85,
-              color: "#fef3c7", fontSize: 14, fontFamily: "'Segoe UI', 'Meiryo', sans-serif",
-              parentGroupId: null, childLayerId: null
-            }
-          ],
-          edges: [
-            { id: "edge_1", source: "node_1", sourcePort: "right", target: "node_2", targetPort: "left", label: "認証OK", color: "#475569" },
-            { id: "edge_2", source: "cont_1", sourcePort: "right", target: "node_3", targetPort: "left", label: "完了後", color: "#475569" }
-          ]
-        },
-        "layer_auth": {
-          id: "layer_auth",
-          name: "1. ユーザーログイン要求",
-          parentLayerId: "root",
-          parentNodeId: "node_1",
-          nodes: [
-            {
-              id: "sub_1", type: "rect", text: "パスワードハッシュ照合",
-              x: 160, y: 150, width: 200, height: 85,
-              color: "#e0e7ff", fontSize: 14, fontFamily: "'Segoe UI', 'Meiryo', sans-serif",
-              parentGroupId: null, childLayerId: null
-            },
-            {
-              id: "sub_2", type: "rect", text: "2要素認証 (MFA) 検証",
-              x: 460, y: 150, width: 200, height: 85,
-              color: "#fce7f3", fontSize: 14, fontFamily: "'Segoe UI', 'Meiryo', sans-serif",
-              parentGroupId: null, childLayerId: null
-            }
-          ],
-          edges: [
-            { id: "sub_edge_1", source: "sub_1", sourcePort: "right", target: "sub_2", targetPort: "left", label: "一致", color: "#475569" }
-          ]
+    function createEmptyProject(projectId) {
+      return {
+        projectId: projectId,
+        currentLayerId: "root",
+        layers: {
+          "root": {
+            id: "root",
+            name: "メイン画面",
+            parentLayerId: null,
+            parentNodeId: null,
+            nodes: [
+              {
+                id: "node_start", type: "rect", text: "メイン処理 (ダブルクリックで文字編集)",
+                x: 240, y: 150, width: 220, height: 85,
+                color: "#dbeafe", fontSize: 14, fontFamily: "'Segoe UI', 'Meiryo', sans-serif",
+                parentGroupId: null, childLayerId: null
+              }
+            ],
+            edges: []
+          }
         }
-      }
-    };
+      };
+    }
+
+    let projectData = createEmptyProject("demo_project_01");
 
     /**************************************************************
      * 2. エディタ状態管理
      **************************************************************/
     let panX = 0, panY = 0, zoom = 1;
-    let selectedNodeIds = new Set(); // 複数選択対応
+    let selectedNodeIds = new Set();
     let selectedEdgeId = null;
     let hoveredNodeId = null;
     let clipboardData = null;
 
-    // インタラクションモード ('none' | 'pan' | 'dragNodes' | 'resize' | 'connect' | 'marquee')
     let mode = 'none';
     let dragStartScreen = { x: 0, y: 0 };
     let dragStartWorld = { x: 0, y: 0 };
     let initialPan = { x: 0, y: 0 };
-    let initialNodeStates = new Map(); // id -> {x, y, width, height}
-    let activeResize = null; // { nodeId, dir }
-    let activeConnect = null; // { sourceId, sourcePort, currentX, currentY }
-    let marqueeRect = null; // { x, y, w, h }
+    let initialNodeStates = new Map();
+    let activeResize = null;
+    let activeConnect = null;
+    let marqueeRect = null;
 
-    // ダブルクリック判定用
     let lastClickInfo = { id: null, time: 0 };
     let editingNodeId = null;
 
-    // DOM参照
     const svg = document.getElementById('canvas-svg');
     const viewport = document.getElementById('viewport');
     const gridPattern = document.getElementById('grid-pattern');
@@ -528,15 +601,30 @@
     const uiLayer = document.getElementById('ui-layer');
     const miniToolbar = document.getElementById('mini-toolbar');
     const inlineEditor = document.getElementById('inline-editor');
+    const projectModal = document.getElementById('project-modal');
 
     const uid = (prefix) => `${prefix}_${Math.random().toString(36).substring(2, 9)}`;
-    const currentLayer = () => projectData.layers[projectData.currentLayerId];
+    const currentLayer = () => projectData.layers[projectData.currentLayerId] || projectData.layers["root"];
 
     function showToast(msg) {
       const t = document.getElementById('toast');
       t.textContent = msg;
       t.classList.add('show');
-      setTimeout(() => t.classList.remove('show'), 2600);
+      setTimeout(() => t.classList.remove('show'), 2800);
+    }
+
+    function updateProjectHeaderAndUrl(projectId, pushHistory = true) {
+      projectData.projectId = projectId;
+      document.getElementById('current-project-label').textContent = projectId;
+      document.title = `${projectId} - FlowHierarchy Studio`;
+
+      // ブラウザのアドレスバーを /p/{プロジェクトID} に変更（ブックマーク・ショートカット用）
+      if (pushHistory) {
+        const targetPath = `/p/${encodeURIComponent(projectId)}`;
+        if (window.location.pathname !== targetPath) {
+          window.history.pushState({ projectId }, '', targetPath);
+        }
+      }
     }
 
     function screenToWorld(clientX, clientY) {
@@ -549,13 +637,12 @@
 
     function updateViewportTransform() {
       viewport.setAttribute('transform', `translate(${panX}, ${panY}) scale(${zoom})`);
-      // 背景グリッドをパン・ズームに完全同期
       gridPattern.setAttribute('patternTransform', `translate(${panX}, ${panY}) scale(${zoom})`);
       updateMiniToolbarPosition();
     }
 
     /**************************************************************
-     * 3. 描画エンジン (SVGレンダリング)
+     * 3. 描画エンジン (SVG)
      **************************************************************/
     function render() {
       updateViewportTransform();
@@ -563,41 +650,37 @@
       renderLayerTree();
 
       const layer = currentLayer();
+      if (!layer) return;
+
       containersLayer.innerHTML = '';
       edgesLayer.innerHTML = '';
       nodesLayer.innerHTML = '';
       uiLayer.innerHTML = '';
 
-      // 1. コンテナと矩形の振り分け描画
       const containers = layer.nodes.filter(n => n.type === 'container');
       const rects = layer.nodes.filter(n => n.type !== 'container');
 
       containers.forEach(c => containersLayer.appendChild(createNodeSVG(c)));
       rects.forEach(r => nodesLayer.appendChild(createNodeSVG(r)));
 
-      // 2. 矢印（エッジ）の描画
       layer.edges.forEach(e => {
         const g = createEdgeSVG(e);
         if (g) edgesLayer.appendChild(g);
       });
 
-      // 3. 選択中またはホバー中ノードのハンドル＆外側ポート描画
       layer.nodes.forEach(n => {
         const isSelected = selectedNodeIds.has(n.id);
         const isHovered = hoveredNodeId === n.id;
         if (isSelected || isHovered) {
-          // 単一選択時のみ8方向リサイズハンドルを表示
           if (isSelected && selectedNodeIds.size === 1) {
             uiLayer.appendChild(createResizeHandlesSVG(n));
           }
-          // ホバー中または単一選択時に外側コネクタポートを表示
           if (isHovered || (isSelected && selectedNodeIds.size === 1)) {
             uiLayer.appendChild(createOuterPortsSVG(n));
           }
         }
       });
 
-      // 4. 矢印ドラッグ中のプレビュー線
       if (mode === 'connect' && activeConnect) {
         const srcNode = layer.nodes.find(n => n.id === activeConnect.sourceId);
         if (srcNode) {
@@ -614,7 +697,6 @@
         }
       }
 
-      // 5. 左クリック範囲選択（ラバーバンド）の描画
       if (mode === 'marquee' && marqueeRect) {
         const box = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
         box.setAttribute('x', marqueeRect.x);
@@ -640,7 +722,6 @@
       const isSelected = selectedNodeIds.has(node.id);
       const isContainer = node.type === 'container';
 
-      // 外側ポートまでマウスを移動してもホバーが切れない透明パディング領域
       const hoverPad = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
       hoverPad.setAttribute('x', -24);
       hoverPad.setAttribute('y', -24);
@@ -649,7 +730,6 @@
       hoverPad.setAttribute('fill', 'transparent');
       g.appendChild(hoverPad);
 
-      // 本体矩形
       const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
       rect.setAttribute('width', node.width);
       rect.setAttribute('height', node.height);
@@ -661,7 +741,6 @@
       if (isContainer) rect.setAttribute('stroke-dasharray', '7,4');
       g.appendChild(rect);
 
-      // コンテナのヘッダー帯
       if (isContainer) {
         const headerRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
         headerRect.setAttribute('width', node.width);
@@ -671,7 +750,6 @@
         g.appendChild(headerRect);
       }
 
-      // テキスト描画（foreignObjectで自動折り返し）
       const fo = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
       fo.setAttribute('x', 8);
       fo.setAttribute('y', isContainer ? 4 : 8);
@@ -683,7 +761,7 @@
       div.style.width = '100%';
       div.style.height = '100%';
       div.style.display = 'flex';
-      div.style.alignItems = isContainer ? 'center' : 'center';
+      div.style.alignItems = 'center';
       div.style.justifyContent = isContainer ? 'flex-start' : 'center';
       div.style.textAlign = isContainer ? 'left' : 'center';
       div.style.fontSize = `${node.fontSize || 14}px`;
@@ -696,7 +774,6 @@
       fo.appendChild(div);
       g.appendChild(fo);
 
-      // 矩形右上の「内部階層へ遷移」バッジボタン（クリックでドリルダウン）
       if (!isContainer) {
         const childLayer = node.childLayerId ? projectData.layers[node.childLayerId] : null;
         const childCount = childLayer ? childLayer.nodes.length : 0;
@@ -724,13 +801,7 @@
         badgeTxt.textContent = childCount > 0 ? `${childCount}↗` : '↗';
         badgeG.appendChild(badgeTxt);
 
-        const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
-        title.textContent = 'クリックしてこの矩形の内部階層へ移動';
-        badgeG.appendChild(title);
-
-        badgeG.addEventListener('mousedown', (ev) => {
-          ev.stopPropagation();
-        });
+        badgeG.addEventListener('mousedown', (ev) => ev.stopPropagation());
         badgeG.addEventListener('click', (ev) => {
           ev.stopPropagation();
           enterNodeLayer(node.id);
@@ -738,7 +809,6 @@
         g.appendChild(badgeG);
       }
 
-      // マウスホバー＆ドラッグ・ダブルクリックイベント
       g.addEventListener('mouseenter', () => {
         if (mode === 'none' && hoveredNodeId !== node.id) {
           hoveredNodeId = node.id;
@@ -753,20 +823,18 @@
       });
 
       g.addEventListener('mousedown', (ev) => {
-        if (ev.button !== 0) return; // 左クリックのみ
+        if (ev.button !== 0) return;
         ev.stopPropagation();
         commitInlineEdit();
 
         const now = Date.now();
         if (lastClickInfo.id === node.id && (now - lastClickInfo.time) < 350) {
-          // ダブルクリック検知 -> インライン文字編集を起動
           lastClickInfo = { id: null, time: 0 };
           startInlineEdit(node);
           return;
         }
         lastClickInfo = { id: node.id, time: now };
 
-        // Shiftキーで複数選択の追加・解除
         if (ev.shiftKey) {
           if (selectedNodeIds.has(node.id)) selectedNodeIds.delete(node.id);
           else selectedNodeIds.add(node.id);
@@ -778,7 +846,6 @@
         }
         selectedEdgeId = null;
 
-        // ドラッグ移動開始準備（選択中の全ノード＋コンテナ内の子ノードの初期座標を記録）
         mode = 'dragNodes';
         dragStartWorld = screenToWorld(ev.clientX, ev.clientY);
         initialNodeStates.clear();
@@ -803,7 +870,6 @@
       return g;
     }
 
-    // 8方向リサイズハンドル（枠線上に配置）
     function createResizeHandlesSVG(node) {
       const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
       const handles = [
@@ -843,7 +909,6 @@
       return g;
     }
 
-    // 矢印接続ポート（リサイズハンドルと重ならないよう18px外側に配置）
     function createOuterPortsSVG(node) {
       const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
       const offset = 18;
@@ -921,7 +986,6 @@
       const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
       g.style.cursor = 'pointer';
 
-      // クリック判定用の太い透明パス
       const hit = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       hit.setAttribute('d', d);
       hit.setAttribute('stroke', 'transparent');
@@ -966,13 +1030,11 @@
     /**************************************************************
      * 4. マウス操作：右ドラッグで画面移動 / 左ドラッグで一括範囲選択
      **************************************************************/
-    // 右クリックメニューを無効化
     svg.addEventListener('contextmenu', (ev) => ev.preventDefault());
 
     svg.addEventListener('mousedown', (ev) => {
       commitInlineEdit();
 
-      // 右クリック (button === 2) または中クリック (button === 1) => 画面移動 (Pan)
       if (ev.button === 2 || ev.button === 1) {
         ev.preventDefault();
         mode = 'pan';
@@ -982,7 +1044,6 @@
         return;
       }
 
-      // 左クリック (button === 0) 余白 => 範囲一括選択 (Marquee)
       if (ev.button === 0) {
         if (!ev.shiftKey) {
           selectedNodeIds.clear();
@@ -1053,7 +1114,6 @@
         const h = Math.abs(pt.y - dragStartWorld.y);
         marqueeRect = { x, y, w, h };
 
-        // 選択枠と交差・包含する矩形およびコンテナをリアルタイム選択
         selectedNodeIds.clear();
         layer.nodes.forEach(n => {
           const intersects = !(
@@ -1075,7 +1135,6 @@
       if (mode === 'pan') {
         svg.classList.remove('panning');
       } else if (mode === 'dragNodes') {
-        // ドロップ時にコンテナの内外判定を更新
         const containers = layer.nodes.filter(n => n.type === 'container');
         selectedNodeIds.forEach(id => {
           const node = layer.nodes.find(n => n.id === id);
@@ -1125,7 +1184,6 @@
       return candidates[0].key;
     }
 
-    // ホイールズーム
     svg.addEventListener('wheel', (ev) => {
       ev.preventDefault();
       commitInlineEdit();
@@ -1142,9 +1200,8 @@
     }, { passive: false });
 
     /**************************************************************
-     * 5. ダブルクリック文字編集 ＆ 上部ミニツールバー制御
+     * 5. ダブルクリック文字編集 ＆ ミニツールバー
      **************************************************************/
-    // ミニツールバー上のクリックで選択が解除されないよう伝播を遮断
     miniToolbar.addEventListener('mousedown', (ev) => ev.stopPropagation());
     inlineEditor.addEventListener('mousedown', (ev) => ev.stopPropagation());
 
@@ -1154,7 +1211,6 @@
       selectedNodeIds.add(node.id);
       render();
 
-      const rect = svg.getBoundingClientRect();
       inlineEditor.style.display = 'block';
       inlineEditor.style.left = `${ panX + node.x * zoom }px`;
       inlineEditor.style.top = `${ panY + node.y * zoom }px`;
@@ -1194,13 +1250,13 @@
 
     function updateMiniToolbarPosition() {
       const layer = currentLayer();
+      if (!layer) return;
       const selectedNodes = layer.nodes.filter(n => selectedNodeIds.has(n.id));
       if (selectedNodes.length === 0) {
         miniToolbar.style.display = 'none';
         return;
       }
 
-      // 複数選択時は選択全体のバウンディングボックス上部に表示
       const minX = Math.min(...selectedNodes.map(n => n.x));
       const maxX = Math.max(...selectedNodes.map(n => n.x + n.width));
       const minY = Math.min(...selectedNodes.map(n => n.y));
@@ -1227,30 +1283,16 @@
       render();
     }
 
-    document.getElementById('mt-font').addEventListener('change', (e) => {
-      applyToSelectedNodes(n => n.fontFamily = e.target.value);
-    });
-    document.getElementById('mt-font-slider').addEventListener('input', (e) => {
-      const sz = parseInt(e.target.value, 10);
-      applyToSelectedNodes(n => n.fontSize = sz);
-    });
-    document.getElementById('mt-font-dec').addEventListener('click', () => {
-      applyToSelectedNodes(n => n.fontSize = Math.max(8, (n.fontSize || 14) - 2));
-    });
-    document.getElementById('mt-font-inc').addEventListener('click', () => {
-      applyToSelectedNodes(n => n.fontSize = Math.min(72, (n.fontSize || 14) + 2));
-    });
-    document.getElementById('mt-color').addEventListener('input', (e) => {
-      applyToSelectedNodes(n => n.color = e.target.value);
-    });
-    document.getElementById('mt-copy').addEventListener('click', () => {
-      copySelection();
-      pasteSelection();
-    });
+    document.getElementById('mt-font').addEventListener('change', (e) => applyToSelectedNodes(n => n.fontFamily = e.target.value));
+    document.getElementById('mt-font-slider').addEventListener('input', (e) => applyToSelectedNodes(n => n.fontSize = parseInt(e.target.value, 10)));
+    document.getElementById('mt-font-dec').addEventListener('click', () => applyToSelectedNodes(n => n.fontSize = Math.max(8, (n.fontSize || 14) - 2)));
+    document.getElementById('mt-font-inc').addEventListener('click', () => applyToSelectedNodes(n => n.fontSize = Math.min(72, (n.fontSize || 14) + 2)));
+    document.getElementById('mt-color').addEventListener('input', (e) => applyToSelectedNodes(n => n.color = e.target.value));
+    document.getElementById('mt-copy').addEventListener('click', () => { copySelection(); pasteSelection(); });
     document.getElementById('mt-del').addEventListener('click', () => deleteSelection());
 
     /**************************************************************
-     * 6. 階層移動（ドリルダウン）＆ パンくず・ツリー表示
+     * 6. 階層移動（ドリルダウン）＆ ツリー表示
      **************************************************************/
     function enterNodeLayer(nodeId) {
       commitInlineEdit();
@@ -1333,7 +1375,7 @@
     }
 
     /**************************************************************
-     * 7. コピー＆ペースト（コンテナ・複数選択・子階層のディープコピー対応）
+     * 7. コピー＆ペースト
      **************************************************************/
     function deepCloneLayer(sourceLayerId, newParentLayerId, newParentNodeId) {
       const orig = projectData.layers[sourceLayerId];
@@ -1379,7 +1421,6 @@
       if (selectedNodeIds.size === 0) return;
 
       const targetIds = new Set(selectedNodeIds);
-      // 選択されたコンテナの内部ノードも自動的に含める
       selectedNodeIds.forEach(id => {
         const n = layer.nodes.find(item => item.id === id);
         if (n && n.type === 'container') {
@@ -1455,7 +1496,6 @@
       }
     }
 
-    // キーボードショートカット
     window.addEventListener('keydown', (ev) => {
       if (editingNodeId || ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) return;
       if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'c') {
@@ -1471,13 +1511,14 @@
     });
 
     /**************************************************************
-     * 8. 右パネル（プロパティ）＆ 左右パネルのリサイザー・開閉
+     * 8. 右パネル＆リサイザー
      **************************************************************/
     function updatePropertyPanel() {
       const emptyEl = document.getElementById('prop-empty');
       const nodeEl = document.getElementById('prop-node');
       const edgeEl = document.getElementById('prop-edge');
       const layer = currentLayer();
+      if (!layer) return;
 
       if (selectedNodeIds.size > 0) {
         emptyEl.style.display = 'none';
@@ -1548,7 +1589,6 @@
       if (edge) { edge.color = e.target.value; render(); }
     });
 
-    // 要素追加ボタン
     function addNode(type) {
       const layer = currentLayer();
       const isCont = type === 'container';
@@ -1580,7 +1620,6 @@
     document.getElementById('btn-delete').addEventListener('click', deleteSelection);
     document.getElementById('btn-reset-view').addEventListener('click', () => { panX = 0; panY = 0; zoom = 1; render(); });
 
-    // パネル表示切替＆リサイザー
     const leftPanel = document.getElementById('left-panel');
     const rightPanel = document.getElementById('right-panel');
     const leftResizer = document.getElementById('left-resizer');
@@ -1618,12 +1657,92 @@
     setupResizer(rightResizer, rightPanel, false);
 
     /**************************************************************
-     * 9. Step 3: Python (FastAPI) + Firebase 本番環境 API通信
+     * 9. プロジェクト一覧モーダル ＆ URLルーティング連携
      **************************************************************/
-      document.getElementById('btn-cloud-save').addEventListener('click', async () => {
-      const pid = document.getElementById('project-id-input').value.trim();
-      if (!pid) return showToast('プロジェクトIDを入力してください');
-      projectData.projectId = pid;
+    async function fetchProjectList() {
+      const container = document.getElementById('project-list-container');
+      container.innerHTML = '<div style="color:var(--text-sub); font-size:12px; padding:12px;">Firebaseから一覧を取得中...</div>';
+      try {
+        const res = await fetch('/api/projects?action=list');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const list = data.projects || [];
+
+        if (list.length === 0) {
+          container.innerHTML = '<div style="color:var(--text-sub); font-size:12px; padding:12px;">保存されたプロジェクトはまだありません。上のフォームから新規作成してください。</div>';
+          return;
+        }
+
+        container.innerHTML = '';
+        list.forEach(item => {
+          const row = document.createElement('div');
+          row.className = 'project-item';
+          row.innerHTML = `
+            <div class="project-item-info">
+              <div class="project-item-title">📁 ${item.projectId}</div>
+              <div class="project-item-meta">階層数: ${item.layerCount} ｜ ルート要素数: ${item.rootNodeCount} ｜ 更新: ${item.updatedAt.slice(0, 19)}</div>
+            </div>
+            <div style="display:flex; gap:6px;">
+              <button class="btn btn-primary btn-open-item">開く</button>
+              <button class="btn btn-danger btn-del-item" title="削除">🗑</button>
+            </div>
+          `;
+          row.addEventListener('click', () => openProjectById(item.projectId, true));
+          row.querySelector('.btn-del-item').addEventListener('click', async (ev) => {
+            ev.stopPropagation();
+            if (!confirm(`プロジェクト「${item.projectId}」をFirebaseから削除しますか？`)) return;
+            await deleteProjectById(item.projectId);
+            fetchProjectList();
+          });
+          container.appendChild(row);
+        });
+      } catch (err) {
+        console.error(err);
+        container.innerHTML = `<div style="color:#f87171; font-size:12px; padding:12px;">一覧の取得に失敗しました: ${err.message}</div>`;
+      }
+    }
+
+    async function openProjectById(pid, pushHistory = true) {
+      if (!pid) return;
+      try {
+        const res = await fetch(`/api/projects/${encodeURIComponent(pid)}?project_id=${encodeURIComponent(pid)}`);
+        if (res.status === 404) {
+          // まだFirestoreに未保存の新規プロジェクトとして初期化して開く
+          projectData = createEmptyProject(pid);
+          updateProjectHeaderAndUrl(pid, pushHistory);
+          projectModal.classList.remove('open');
+          selectedNodeIds.clear();
+          selectedEdgeId = null;
+          panX = 0; panY = 0; zoom = 1;
+          render();
+          showToast(`新規プロジェクト「${pid}」を開始しました（☁保存でクラウド記録）`);
+          return;
+        }
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.detail || `HTTP ${res.status}`);
+        }
+        const loaded = await res.json();
+        projectData = loaded;
+        if (!projectData.currentLayerId || !projectData.layers[projectData.currentLayerId]) {
+          projectData.currentLayerId = "root";
+        }
+        updateProjectHeaderAndUrl(pid, pushHistory);
+        projectModal.classList.remove('open');
+        selectedNodeIds.clear();
+        selectedEdgeId = null;
+        panX = 0; panY = 0; zoom = 1;
+        render();
+        showToast(`プロジェクト「${pid}」を読み込みました`);
+      } catch (err) {
+        console.error(err);
+        showToast(`読込エラー: ${err.message}`);
+      }
+    }
+
+    async function saveCurrentProject() {
+      const pid = projectData.projectId;
+      if (!pid) return showToast('プロジェクトが選択されていません');
 
       try {
         const res = await fetch(`/api/projects/${encodeURIComponent(pid)}?project_id=${encodeURIComponent(pid)}`, {
@@ -1635,56 +1754,87 @@
           const errData = await res.json().catch(() => ({}));
           throw new Error(errData.detail || `HTTP ${res.status}`);
         }
-        showToast(`Firebaseへ保存しました (ID: ${pid})`);
+        showToast(`☁ Firebaseへ保存しました (URL: /p/${pid})`);
       } catch (err) {
         console.error(err);
         showToast(`保存エラー: ${err.message}`);
       }
+    }
+
+    async function deleteProjectById(pid) {
+      try {
+        await fetch(`/api/projects/${encodeURIComponent(pid)}?project_id=${encodeURIComponent(pid)}&action=delete`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ projectId: pid, _action: 'delete' })
+        });
+        showToast(`「${pid}」を削除しました`);
+      } catch (err) {
+        showToast(`削除エラー: ${err.message}`);
+      }
+    }
+
+    // モーダル操作イベント
+    document.getElementById('btn-open-modal').addEventListener('click', () => {
+      projectModal.classList.add('open');
+      fetchProjectList();
+    });
+    document.getElementById('btn-close-modal').addEventListener('click', () => {
+      projectModal.classList.remove('open');
+    });
+    document.getElementById('btn-refresh-list').addEventListener('click', fetchProjectList);
+
+    document.getElementById('btn-create-project').addEventListener('click', async () => {
+      const input = document.getElementById('new-project-input');
+      const pid = input.value.trim().replace(/[\/\\?#]/g, '_');
+      if (!pid) return showToast('新しいプロジェクト名を入力してください');
+
+      projectData = createEmptyProject(pid);
+      updateProjectHeaderAndUrl(pid, true);
+      projectModal.classList.remove('open');
+      input.value = '';
+      render();
+      // 新規作成と同時にFirebaseへ初回保存
+      await saveCurrentProject();
     });
 
-    document.getElementById('btn-cloud-load').addEventListener('click', async () => {
-      const pid = document.getElementById('project-id-input').value.trim();
-      if (!pid) return showToast('プロジェクトIDを入力してください');
+    document.getElementById('btn-cloud-save').addEventListener('click', saveCurrentProject);
 
-      try {
-        const res = await fetch(`/api/projects/${encodeURIComponent(pid)}?project_id=${encodeURIComponent(pid)}`);
-        if (!res.ok) {
-          const errData = await res.json().catch(() => ({}));
-          throw new Error(errData.detail || `HTTP ${res.status}`);
+    // 専用URLコピーボタン（ブラウザのショートカット作成用）
+    document.getElementById('btn-copy-url').addEventListener('click', () => {
+      navigator.clipboard.writeText(window.location.href).then(() => {
+        showToast('プロジェクト専用URLをコピーしました！ブックマークに登録できます');
+      });
+    });
+
+    // ブラウザの「戻る / 進む」ボタン対応
+    window.addEventListener('popstate', () => {
+      handleInitialRoute(false);
+    });
+
+    // 起動時のURL判定: /p/{プロジェクトID} なら自動ロード、ルート(/) なら一覧モーダルを表示
+    function handleInitialRoute(pushHistory = false) {
+      const path = window.location.pathname;
+      const params = new URLSearchParams(window.location.search);
+
+      if (path.startsWith('/p/')) {
+        const pid = decodeURIComponent(path.slice(3));
+        if (pid) {
+          openProjectById(pid, pushHistory);
+          return;
         }
-        const loaded = await res.json();
-        projectData = loaded;
-        selectedNodeIds.clear();
-        selectedEdgeId = null;
-        render();
-        showToast(`Firebaseから読み込みました (ID: ${pid})`);
-      } catch (err) {
-        console.error(err);
-        showToast(`読込エラー: ${err.message}`);
+      } else if (params.get('p')) {
+        openProjectById(params.get('p'), true);
+        return;
       }
-    });
 
-    document.getElementById('btn-cloud-load').addEventListener('click', async () => {
-      const pid = document.getElementById('project-id-input').value.trim();
-      if (!pid) return showToast('プロジェクトIDを入力してください');
+      // プロジェクト指定がない場合は起動時に一覧モーダルを表示
+      render();
+      projectModal.classList.add('open');
+      fetchProjectList();
+    }
 
-      try {
-        const res = await fetch(`/api/projects/${encodeURIComponent(pid)}?project_id=${encodeURIComponent(pid)}`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const loaded = await res.json();
-        projectData = loaded;
-        selectedNodeIds.clear();
-        selectedEdgeId = null;
-        render();
-        showToast(`Firebaseから読み込みました (ID: ${pid})`);
-      } catch (err) {
-        console.error(err);
-        showToast('読込エラー: 指定IDが存在しないかサーバー未起動です');
-      }
-    });
-
-    // 初回描画
-    render();
+    handleInitialRoute(false);
   </script>
 </body>
 </html>
