@@ -26,7 +26,7 @@
       overflow: hidden;
     }
 
-    /* Header (ウィンドウ縮小時に崩れないよう flex-shrink と overflow を制御) */
+    /* Header */
     header {
       min-height: 50px;
       background: var(--panel-bg);
@@ -79,10 +79,11 @@
     .btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
     .btn-success { background: #10b981; border-color: #059669; color: #fff; font-weight: 600; }
     .btn-success:hover:not(:disabled) { background: #059669; }
+    .btn-warning { background: #f59e0b; border-color: #d97706; color: #fff; font-weight: 600; }
+    .btn-warning:hover:not(:disabled) { background: #d97706; }
     .btn-danger { background: #ef4444; border-color: #dc2626; color: #fff; }
     .btn-danger:hover:not(:disabled) { background: #dc2626; }
 
-    /* 右上プロジェクト名バッジの縦崩れ防止 */
     .project-badge {
       background: #181a1f;
       border: 1px solid #3e4451;
@@ -161,7 +162,7 @@
       flex-shrink: 0;
     }
     #left-panel { width: 230px; min-width: 150px; max-width: 450px; border-right: 1px solid var(--border-color); }
-    #right-panel { width: 260px; min-width: 170px; max-width: 480px; border-left: 1px solid var(--border-color); }
+    #right-panel { width: 265px; min-width: 170px; max-width: 480px; border-left: 1px solid var(--border-color); }
     .side-panel.hidden { display: none !important; }
 
     .resizer {
@@ -217,7 +218,6 @@
     }
     #canvas-svg.panning { cursor: grabbing !important; }
 
-    /* Grid Snap Indicator Badge */
     #snap-indicator {
       position: absolute;
       top: 10px;
@@ -259,7 +259,7 @@
       font-size: 12px;
       cursor: pointer;
     }
-    #mini-toolbar input[type="range"] { width: 70px; cursor: pointer; }
+    #mini-toolbar input[type="range"] { width: 65px; cursor: pointer; }
 
     /* Inline Text Editor */
     #inline-editor {
@@ -290,6 +290,10 @@
       border-radius: 5px;
       font-size: 12px;
       user-select: text;
+    }
+    .form-control:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
     }
     .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 
@@ -413,6 +417,7 @@
     <div class="header-center">
       <button class="btn" id="btn-undo" title="元に戻す (Ctrl+Z / マウス戻るボタン)" disabled>↶ 戻す</button>
       <button class="btn" id="btn-redo" title="やり直す (Ctrl+Y / マウス進むボタン)" disabled>↷ 進む</button>
+      <button class="btn" id="btn-lock-toggle" title="選択要素のロック切替 (Ctrl+L)">🔒 ロック切替</button>
       <button class="btn" id="btn-copy" title="Ctrl+C">コピー</button>
       <button class="btn" id="btn-paste" title="Ctrl+V">貼り付け</button>
       <button class="btn btn-danger" id="btn-delete" title="Delete">削除</button>
@@ -434,7 +439,7 @@
   <div class="subbar">
     <div class="breadcrumbs" id="breadcrumbs"></div>
     <div class="hint-text">
-      【操作】左ドラッグ：移動 / 範囲選択 ｜ Shift+移動：グリッド吸着 ｜ 右ドラッグ：画面移動 ｜ Ctrl+Z/Y・マウス戻る/進む：Undo/Redo
+      【操作】外側の緑「＋」ドラッグ：新規矩形を生成して矢印接続 ｜ Ctrl+L：ロック切替 ｜ Shift+移動：グリッド吸着 ｜ 右ドラッグ：画面移動
     </div>
   </div>
 
@@ -472,6 +477,9 @@
           <marker id="arrowhead-selected" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
             <polygon points="0 0, 10 3.5, 0 7" fill="#3b82f6"></polygon>
           </marker>
+          <marker id="arrowhead-create" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#10b981"></polygon>
+          </marker>
         </defs>
 
         <rect id="grid-bg" width="100%" height="100%" fill="url(#grid-pattern)"></rect>
@@ -486,6 +494,7 @@
 
       <!-- 選択要素の上部に浮かぶミニツールバー -->
       <div id="mini-toolbar">
+        <button class="btn" id="mt-lock" style="padding:3px 8px;" title="編集・移動のロック切替 (Ctrl+L)">🔓 ロック</button>
         <select id="mt-font" title="フォント種類">
           <option value="'Segoe UI', 'Meiryo', sans-serif">ゴシック (標準)</option>
           <option value="'Yu Mincho', 'MS PMincho', serif">明朝体</option>
@@ -515,6 +524,16 @@
 
         <div id="prop-node" style="display:none;">
           <div id="prop-multi-badge" style="display:none; background:#1e3a8a; color:#93c5fd; padding:6px 10px; border-radius:5px; font-size:12px; margin-bottom:10px; font-weight:600;"></div>
+          <div id="prop-proxy-notice" style="display:none; background:#374151; color:#fcd34d; padding:8px 10px; border-radius:6px; font-size:11px; margin-bottom:10px; line-height:1.5;">
+            👑 これは上の階層から引き継がれた<strong>親階層の矩形（編集不可）</strong>です。矢印ポートや外側の「＋」から内部フローを繋げられます。
+          </div>
+
+          <div class="form-group">
+            <button class="btn" id="prop-lock-btn" style="width:100%; justify-content:center; padding:8px;">
+              🔓 編集・移動をロックする (Ctrl+L)
+            </button>
+          </div>
+
           <div class="form-group" id="prop-text-group">
             <label>テキスト (ダブルクリックでも編集可)</label>
             <textarea id="prop-text" class="form-control" rows="3"></textarea>
@@ -601,7 +620,7 @@
     /**************************************************************
      * 1. プロジェクトデータ初期化テンプレート ＆ 定数
      **************************************************************/
-    const GRID_SIZE = 24; // 背景ドットグリッドの間隔 (24px)
+    const GRID_SIZE = 24;
     const snapToGrid = (val) => Math.round(val / GRID_SIZE) * GRID_SIZE;
 
     function createEmptyProject(projectId) {
@@ -619,7 +638,7 @@
                 id: "node_start", type: "rect", text: "メイン処理 (ダブルクリックで文字編集)",
                 x: 240, y: 144, width: 216, height: 96,
                 color: "#dbeafe", fontSize: 14, fontFamily: "'Segoe UI', 'Meiryo', sans-serif",
-                parentGroupId: null, childLayerId: null
+                parentGroupId: null, childLayerId: null, locked: false, isParentProxy: false
               }
             ],
             edges: []
@@ -630,13 +649,18 @@
 
     let projectData = createEmptyProject("demo_project_01");
 
+    // ノードが編集・移動ロックされているか判定（親階層の代理ノードも常時ロック扱い）
+    function isNodeLocked(node) {
+      return Boolean(node && (node.locked || node.isParentProxy));
+    }
+
     /**************************************************************
      * 2. Undo / Redo 履歴管理システム
      **************************************************************/
     const MAX_HISTORY = 60;
     let undoStack = [];
     let redoStack = [];
-    let dragSnapshotBefore = null; // ドラッグ開始前のスナップショット
+    let dragSnapshotBefore = null;
 
     function cloneState(data) {
       return JSON.parse(JSON.stringify(data));
@@ -650,7 +674,6 @@
 
     function recordHistory(customBeforeState = null) {
       const stateToPush = customBeforeState || cloneState(projectData);
-      // 直前の状態と全く同じなら積まない
       if (undoStack.length > 0 && JSON.stringify(undoStack[undoStack.length - 1]) === JSON.stringify(stateToPush)) {
         return;
       }
@@ -704,14 +727,15 @@
     let hoveredNodeId = null;
     let clipboardData = null;
 
+    // mode: 'none' | 'pan' | 'dragNodes' | 'resize' | 'connect' | 'QuickCreate' | 'marquee'
     let mode = 'none';
-    let primaryDragNodeId = null; // Shiftグリッドスナップの基準ノード
+    let primaryDragNodeId = null;
     let dragStartScreen = { x: 0, y: 0 };
     let dragStartWorld = { x: 0, y: 0 };
     let initialPan = { x: 0, y: 0 };
     let initialNodeStates = new Map();
     let activeResize = null;
-    let activeConnect = null;
+    let activeConnect = null; // { sourceId, sourcePort, currentX, currentY, forceCreateNew }
     let marqueeRect = null;
 
     let lastClickInfo = { id: null, time: 0 };
@@ -737,7 +761,7 @@
       t.textContent = msg;
       t.classList.add('show');
       clearTimeout(showToast._timer);
-      showToast._timer = setTimeout(() => t.classList.remove('show'), 2400);
+      showToast._timer = setTimeout(() => t.classList.remove('show'), 2500);
     }
 
     function updateProjectHeaderAndUrl(projectId, pushHistory = true) {
@@ -752,7 +776,6 @@
         if (window.location.pathname !== targetPath) {
           window.history.pushState({ projectId }, '', targetPath);
         }
-        // マウスの戻るボタンでページ遷移してしまわないようダミー履歴ガードを積む
         window.history.pushState({ projectId, guard: true }, '', targetPath);
       }
     }
@@ -772,15 +795,57 @@
     }
 
     /**************************************************************
-     * 4. 描画エンジン (SVG)
+     * 4. 親階層アンカー矩形（編集不可）の自動配置・同期
+     **************************************************************/
+    function ensureParentProxyNode(layer) {
+      if (!layer || !layer.parentLayerId || !layer.parentNodeId) return;
+      const parentLayer = projectData.layers[layer.parentLayerId];
+      if (!parentLayer) return;
+      const parentNode = parentLayer.nodes.find(n => n.id === layer.parentNodeId);
+      if (!parentNode) return;
+
+      let proxy = layer.nodes.find(n => n.isParentProxy);
+      if (!proxy) {
+        proxy = {
+          id: `parent_proxy_${layer.id}`,
+          type: 'rect',
+          text: parentNode.text || '親階層ノード',
+          x: 240,
+          y: 48,
+          width: Math.max(192, parentNode.width || 192),
+          height: parentNode.height || 84,
+          color: parentNode.color || '#dbeafe',
+          fontSize: parentNode.fontSize || 14,
+          fontFamily: parentNode.fontFamily || "'Segoe UI', 'Meiryo', sans-serif",
+          parentGroupId: null,
+          childLayerId: null,
+          locked: true,
+          isParentProxy: true
+        };
+        layer.nodes.unshift(proxy);
+      } else {
+        // 親ノードの最新テキスト・色を常時同期し、編集不可を維持
+        proxy.text = parentNode.text || '親階層ノード';
+        proxy.color = parentNode.color || '#dbeafe';
+        proxy.fontFamily = parentNode.fontFamily || "'Segoe UI', 'Meiryo', sans-serif";
+        proxy.locked = true;
+        proxy.isParentProxy = true;
+      }
+    }
+
+    /**************************************************************
+     * 5. 描画エンジン (SVG)
      **************************************************************/
     function render() {
+      const layer = currentLayer();
+      if (!layer) return;
+
+      // サブ階層の場合、親矩形（編集不可）を確実に配置・同期
+      ensureParentProxyNode(layer);
+
       updateViewportTransform();
       renderBreadcrumbs();
       renderLayerTree();
-
-      const layer = currentLayer();
-      if (!layer) return;
 
       containersLayer.innerHTML = '';
       edgesLayer.innerHTML = '';
@@ -802,28 +867,48 @@
         const isSelected = selectedNodeIds.has(n.id);
         const isHovered = hoveredNodeId === n.id;
         if (isSelected || isHovered) {
-          if (isSelected && selectedNodeIds.size === 1) {
+          // ロックされていない単一選択ノードのみリサイズハンドルを表示
+          if (isSelected && selectedNodeIds.size === 1 && !isNodeLocked(n)) {
             uiLayer.appendChild(createResizeHandlesSVG(n));
           }
+          // 矢印ポート＋さらに外側の「新規矩形生成＆接続(＋)」ボタンを表示（ロック中でも接続は可能）
           if (isHovered || (isSelected && selectedNodeIds.size === 1)) {
-            uiLayer.appendChild(createOuterPortsSVG(n));
+            uiLayer.appendChild(createOuterPortsAndQuickCreateSVG(n));
           }
         }
       });
 
-      if (mode === 'connect' && activeConnect) {
+      // 矢印接続 / 新規矩形生成ドラッグ中のプレビュー描画
+      if ((mode === 'connect' || mode === 'quickCreate') && activeConnect) {
         const srcNode = layer.nodes.find(n => n.id === activeConnect.sourceId);
         if (srcNode) {
           const p1 = getPortCoords(srcNode, activeConnect.sourcePort);
+          const oppositePort = getOppositePort(activeConnect.sourcePort);
           const line = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-          const d = computeCurvePath(p1.x, p1.y, activeConnect.currentX, activeConnect.currentY, activeConnect.sourcePort, 'left');
+          const d = computeCurvePath(p1.x, p1.y, activeConnect.currentX, activeConnect.currentY, activeConnect.sourcePort, oppositePort);
           line.setAttribute('d', d);
-          line.setAttribute('stroke', '#3b82f6');
+          line.setAttribute('stroke', mode === 'quickCreate' ? '#10b981' : '#3b82f6');
           line.setAttribute('stroke-width', '2.5');
           line.setAttribute('stroke-dasharray', '6,4');
           line.setAttribute('fill', 'none');
-          line.setAttribute('marker-end', 'url(#arrowhead-selected)');
+          line.setAttribute('marker-end', mode === 'quickCreate' ? 'url(#arrowhead-create)' : 'url(#arrowhead-selected)');
           uiLayer.appendChild(line);
+
+          // 新規矩形生成モード時は生成予定のゴースト矩形を表示
+          if (mode === 'quickCreate') {
+            const ghostPos = computeNewNodePosFromCursor(activeConnect.currentX, activeConnect.currentY, activeConnect.sourcePort, 192, 84);
+            const ghost = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            ghost.setAttribute('x', ghostPos.x);
+            ghost.setAttribute('y', ghostPos.y);
+            ghost.setAttribute('width', 192);
+            ghost.setAttribute('height', 84);
+            ghost.setAttribute('rx', 7);
+            ghost.setAttribute('fill', 'rgba(16, 185, 129, 0.15)');
+            ghost.setAttribute('stroke', '#10b981');
+            ghost.setAttribute('stroke-width', '2');
+            ghost.setAttribute('stroke-dasharray', '5,3');
+            uiLayer.appendChild(ghost);
+          }
         }
       }
 
@@ -847,31 +932,61 @@
     function createNodeSVG(node) {
       const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
       g.setAttribute('transform', `translate(${node.x}, ${node.y})`);
-      g.style.cursor = 'move';
+      const locked = isNodeLocked(node);
+      g.style.cursor = locked ? 'default' : 'move';
 
       const isSelected = selectedNodeIds.has(node.id);
       const isContainer = node.type === 'container';
 
+      // 外側の「＋」ボタン（距離42px）までマウスを移動してもホバーが切れない透明パディング領域
       const hoverPad = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-      hoverPad.setAttribute('x', -24);
-      hoverPad.setAttribute('y', -24);
-      hoverPad.setAttribute('width', node.width + 48);
-      hoverPad.setAttribute('height', node.height + 48);
+      hoverPad.setAttribute('x', -52);
+      hoverPad.setAttribute('y', -52);
+      hoverPad.setAttribute('width', node.width + 104);
+      hoverPad.setAttribute('height', node.height + 104);
       hoverPad.setAttribute('fill', 'transparent');
       g.appendChild(hoverPad);
 
+      // 本体矩形
       const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
       rect.setAttribute('width', node.width);
       rect.setAttribute('height', node.height);
       rect.setAttribute('rx', isContainer ? 10 : 7);
       rect.setAttribute('fill', node.color || (isContainer ? '#e2e8f0' : '#dbeafe'));
       rect.setAttribute('fill-opacity', isContainer ? '0.45' : '1');
-      rect.setAttribute('stroke', isSelected ? '#3b82f6' : (isContainer ? '#64748b' : '#475569'));
-      rect.setAttribute('stroke-width', isSelected ? '3' : '1.8');
-      if (isContainer) rect.setAttribute('stroke-dasharray', '7,4');
+
+      if (node.isParentProxy) {
+        rect.setAttribute('stroke', isSelected ? '#3b82f6' : '#d97706');
+        rect.setAttribute('stroke-width', isSelected ? '3.5' : '2.5');
+        rect.setAttribute('stroke-dasharray', '6,3');
+      } else if (locked) {
+        rect.setAttribute('stroke', isSelected ? '#3b82f6' : '#f59e0b');
+        rect.setAttribute('stroke-width', isSelected ? '3' : '2');
+      } else {
+        rect.setAttribute('stroke', isSelected ? '#3b82f6' : (isContainer ? '#64748b' : '#475569'));
+        rect.setAttribute('stroke-width', isSelected ? '3' : '1.8');
+        if (isContainer) rect.setAttribute('stroke-dasharray', '7,4');
+      }
       g.appendChild(rect);
 
-      if (isContainer) {
+      // 親階層アンカーノード用の 상部ラベル帯
+      if (node.isParentProxy) {
+        const proxyHeader = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        proxyHeader.setAttribute('width', node.width);
+        proxyHeader.setAttribute('height', 22);
+        proxyHeader.setAttribute('rx', 6);
+        proxyHeader.setAttribute('fill', '#f59e0b');
+        g.appendChild(proxyHeader);
+
+        const proxyLabel = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        proxyLabel.setAttribute('x', 8);
+        proxyLabel.setAttribute('y', 15);
+        proxyLabel.setAttribute('fill', '#ffffff');
+        proxyLabel.setAttribute('font-size', '10px');
+        proxyLabel.setAttribute('font-weight', 'bold');
+        proxyLabel.textContent = '🔒 親階層ノード (編集不可・接続起点)';
+        g.appendChild(proxyLabel);
+      } else if (isContainer) {
         const headerRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
         headerRect.setAttribute('width', node.width);
         headerRect.setAttribute('height', 30);
@@ -880,11 +995,12 @@
         g.appendChild(headerRect);
       }
 
+      // テキスト表示
       const fo = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
       fo.setAttribute('x', 8);
-      fo.setAttribute('y', isContainer ? 4 : 8);
+      fo.setAttribute('y', node.isParentProxy ? 24 : (isContainer ? 4 : 8));
       fo.setAttribute('width', Math.max(20, node.width - 16));
-      fo.setAttribute('height', isContainer ? 26 : Math.max(20, node.height - 16));
+      fo.setAttribute('height', node.isParentProxy ? Math.max(20, node.height - 28) : (isContainer ? 26 : Math.max(20, node.height - 16)));
       fo.style.pointerEvents = 'none';
 
       const div = document.createElement('div');
@@ -896,7 +1012,7 @@
       div.style.textAlign = isContainer ? 'left' : 'center';
       div.style.fontSize = `${node.fontSize || 14}px`;
       div.style.fontFamily = node.fontFamily || "'Segoe UI', 'Meiryo', sans-serif";
-      div.style.fontWeight = isContainer ? '700' : '500';
+      div.style.fontWeight = (isContainer || node.isParentProxy) ? '700' : '500';
       div.style.color = '#1e293b';
       div.style.wordBreak = 'break-word';
       div.style.whiteSpace = 'pre-wrap';
@@ -904,9 +1020,47 @@
       fo.appendChild(div);
       g.appendChild(fo);
 
-      if (!isContainer) {
+      // 通常ロック時の左上「🔒」アイコンバッジ（クリックでロック解除も可能）
+      if (locked && !node.isParentProxy) {
+        const lockBadge = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        lockBadge.setAttribute('transform', `translate(6, 6)`);
+        lockBadge.style.cursor = 'pointer';
+
+        const lbBg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        lbBg.setAttribute('width', 22);
+        lbBg.setAttribute('height', 20);
+        lbBg.setAttribute('rx', 4);
+        lbBg.setAttribute('fill', '#f59e0b');
+        lockBadge.appendChild(lbBg);
+
+        const lbTxt = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        lbTxt.setAttribute('x', 11);
+        lbTxt.setAttribute('y', 14);
+        lbTxt.setAttribute('text-anchor', 'middle');
+        lbTxt.setAttribute('font-size', '11px');
+        lbTxt.textContent = '🔒';
+        lockBadge.appendChild(lbTxt);
+
+        const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+        title.textContent = 'ロック中（クリックでロック解除）';
+        lockBadge.appendChild(title);
+
+        lockBadge.addEventListener('mousedown', (ev) => ev.stopPropagation());
+        lockBadge.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          recordHistory();
+          node.locked = false;
+          render();
+          showToast('🔓 ロックを解除しました');
+        });
+        g.appendChild(lockBadge);
+      }
+
+      // 右上の内部階層移動バッジ（親アンカーノードとコンテナには表示しない）
+      if (!isContainer && !node.isParentProxy) {
         const childLayer = node.childLayerId ? projectData.layers[node.childLayerId] : null;
-        const childCount = childLayer ? childLayer.nodes.length : 0;
+        // 内部要素数は親アンカーノードを除いた実質ノード数でカウント
+        const childCount = childLayer ? childLayer.nodes.filter(n => !n.isParentProxy).length : 0;
 
         const badgeG = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         badgeG.setAttribute('transform', `translate(${node.width - 34}, 6)`);
@@ -960,6 +1114,10 @@
         const now = Date.now();
         if (lastClickInfo.id === node.id && (now - lastClickInfo.time) < 350) {
           lastClickInfo = { id: null, time: 0 };
+          if (isNodeLocked(node)) {
+            showToast(node.isParentProxy ? '🔒 親階層アンカーノードは編集できません' : '🔒 ロックされているため文字編集できません (Ctrl+Lで解除)');
+            return;
+          }
           startInlineEdit(node);
           return;
         }
@@ -971,7 +1129,12 @@
         }
         selectedEdgeId = null;
 
-        // ドラッグ開始前の状態をスナップショット保存（移動確定時にUndo履歴へ登録）
+        // ロックされている場合は選択のみ行い、ドラッグ移動は開始しない
+        if (isNodeLocked(node)) {
+          render();
+          return;
+        }
+
         dragSnapshotBefore = cloneState(projectData);
         mode = 'dragNodes';
         primaryDragNodeId = node.id;
@@ -979,11 +1142,14 @@
         initialNodeStates.clear();
 
         const layer = currentLayer();
-        const movingIds = new Set(selectedNodeIds);
+        const movingIds = new Set();
         selectedNodeIds.forEach(id => {
           const n = layer.nodes.find(item => item.id === id);
-          if (n && n.type === 'container') {
-            layer.nodes.filter(ch => ch.parentGroupId === n.id).forEach(ch => movingIds.add(ch.id));
+          if (n && !isNodeLocked(n)) {
+            movingIds.add(n.id);
+            if (n.type === 'container') {
+              layer.nodes.filter(ch => ch.parentGroupId === n.id && !isNodeLocked(ch)).forEach(ch => movingIds.add(ch.id));
+            }
           }
         });
 
@@ -1023,7 +1189,7 @@
         r.style.cursor = h.cursor;
 
         r.addEventListener('mousedown', (ev) => {
-          if (ev.button !== 0) return;
+          if (ev.button !== 0 || isNodeLocked(node)) return;
           ev.stopPropagation();
           commitInlineEdit();
           dragSnapshotBefore = cloneState(projectData);
@@ -1038,46 +1204,130 @@
       return g;
     }
 
-    function createOuterPortsSVG(node) {
+    // 矢印ポート(18px外側) ＋ さらに外側の「新規矩形生成＆矢印接続(＋)」ボタン(38px外側)
+    function createOuterPortsAndQuickCreateSVG(node) {
       const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-      const offset = 18;
-      const ports = [
-        { key: 'top',    x: node.x + node.width / 2, y: node.y - offset, bx: node.x + node.width / 2, by: node.y },
-        { key: 'right',  x: node.x + node.width + offset, y: node.y + node.height / 2, bx: node.x + node.width, by: node.y + node.height / 2 },
-        { key: 'bottom', x: node.x + node.width / 2, y: node.y + node.height + offset, bx: node.x + node.width / 2, by: node.y + node.height },
-        { key: 'left',   x: node.x - offset, y: node.y + node.height / 2, bx: node.x, by: node.y + node.height / 2 }
+      const portOffset = 18;
+      const createOffset = 38;
+
+      const dirs = [
+        {
+          key: 'top',
+          bx: node.x + node.width / 2, by: node.y,
+          px: node.x + node.width / 2, py: node.y - portOffset,
+          cx: node.x + node.width / 2, cy: node.y - createOffset
+        },
+        {
+          key: 'right',
+          bx: node.x + node.width, by: node.y + node.height / 2,
+          px: node.x + node.width + portOffset, py: node.y + node.height / 2,
+          cx: node.x + node.width + createOffset, cy: node.y + node.height / 2
+        },
+        {
+          key: 'bottom',
+          bx: node.x + node.width / 2, by: node.y + node.height,
+          px: node.x + node.width / 2, py: node.y + node.height + portOffset,
+          cx: node.x + node.width / 2, cy: node.y + node.height + createOffset
+        },
+        {
+          key: 'left',
+          bx: node.x, by: node.y + node.height / 2,
+          px: node.x - portOffset, py: node.y + node.height / 2,
+          cx: node.x - createOffset, cy: node.y + node.height / 2
+        }
       ];
 
-      ports.forEach(p => {
+      dirs.forEach(d => {
+        // ガイド線（枠線 -> 矢印ポート -> 新規生成＋ボタン）
         const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-        line.setAttribute('x1', p.bx);
-        line.setAttribute('y1', p.by);
-        line.setAttribute('x2', p.x);
-        line.setAttribute('y2', p.y);
+        line.setAttribute('x1', d.bx);
+        line.setAttribute('y1', d.by);
+        line.setAttribute('x2', d.cx);
+        line.setAttribute('y2', d.cy);
         line.setAttribute('stroke', '#93c5fd');
         line.setAttribute('stroke-width', '1.5');
+        line.setAttribute('stroke-dasharray', '2,2');
         g.appendChild(line);
 
-        const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-        c.setAttribute('cx', p.x);
-        c.setAttribute('cy', p.y);
-        c.setAttribute('r', 6);
-        c.setAttribute('fill', '#3b82f6');
-        c.setAttribute('stroke', '#ffffff');
-        c.setAttribute('stroke-width', '2');
-        c.style.cursor = 'crosshair';
+        // 1. 通常の矢印接続ポート（青い丸: 18px外側）
+        const portCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        portCircle.setAttribute('cx', d.px);
+        portCircle.setAttribute('cy', d.py);
+        portCircle.setAttribute('r', 5.5);
+        portCircle.setAttribute('fill', '#3b82f6');
+        portCircle.setAttribute('stroke', '#ffffff');
+        portCircle.setAttribute('stroke-width', '2');
+        portCircle.style.cursor = 'crosshair';
 
-        c.addEventListener('mousedown', (ev) => {
+        const portTitle = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+        portTitle.textContent = 'ドラッグして他の要素へ矢印を接続（余白で離すと新規作成）';
+        portCircle.appendChild(portTitle);
+
+        portCircle.addEventListener('mousedown', (ev) => {
           if (ev.button !== 0) return;
           ev.stopPropagation();
           commitInlineEdit();
           const pt = screenToWorld(ev.clientX, ev.clientY);
           mode = 'connect';
-          activeConnect = { sourceId: node.id, sourcePort: p.key, currentX: pt.x, currentY: pt.y };
+          activeConnect = { sourceId: node.id, sourcePort: d.key, currentX: pt.x, currentY: pt.y };
         });
-        g.appendChild(c);
+        g.appendChild(portCircle);
+
+        // 2. さらに外側の「新規矩形を生成して矢印接続」ボタン（緑の＋丸: 38px外側）
+        const createGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        createGroup.setAttribute('transform', `translate(${d.cx}, ${d.cy})`);
+        createGroup.style.cursor = 'pointer';
+
+        const createCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        createCircle.setAttribute('r', 8);
+        createCircle.setAttribute('fill', '#10b981');
+        createCircle.setAttribute('stroke', '#ffffff');
+        createCircle.setAttribute('stroke-width', '2');
+        createGroup.appendChild(createCircle);
+
+        const plusTxt = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        plusTxt.setAttribute('x', 0);
+        plusTxt.setAttribute('y', 4);
+        plusTxt.setAttribute('text-anchor', 'middle');
+        plusTxt.setAttribute('fill', '#ffffff');
+        plusTxt.setAttribute('font-size', '12px');
+        plusTxt.setAttribute('font-weight', 'bold');
+        plusTxt.style.pointerEvents = 'none';
+        plusTxt.textContent = '+';
+        createGroup.appendChild(plusTxt);
+
+        const createTitle = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+        createTitle.textContent = 'ドラッグまたはクリックで新規矩形を生成し、矢印を自動接続';
+        createGroup.appendChild(createTitle);
+
+        createGroup.addEventListener('mousedown', (ev) => {
+          if (ev.button !== 0) return;
+          ev.stopPropagation();
+          commitInlineEdit();
+          const pt = screenToWorld(ev.clientX, ev.clientY);
+          dragStartWorld = pt;
+          mode = 'quickCreate';
+          activeConnect = { sourceId: node.id, sourcePort: d.key, currentX: pt.x, currentY: pt.y };
+        });
+
+        g.appendChild(createGroup);
       });
       return g;
+    }
+
+    function getOppositePort(port) {
+      if (port === 'top') return 'bottom';
+      if (port === 'bottom') return 'top';
+      if (port === 'left') return 'right';
+      return 'left';
+    }
+
+    function computeNewNodePosFromCursor(cx, cy, sourcePort, w = 192, h = 84) {
+      // 矢印の先端（接続先ポート）がカーソル位置に来るように矩形座標を算出
+      if (sourcePort === 'right') return { x: Math.round(cx), y: Math.round(cy - h / 2) };
+      if (sourcePort === 'left')  return { x: Math.round(cx - w), y: Math.round(cy - h / 2) };
+      if (sourcePort === 'bottom') return { x: Math.round(cx - w / 2), y: Math.round(cy) };
+      return { x: Math.round(cx - w / 2), y: Math.round(cy - h) };
     }
 
     function getPortCoords(node, port) {
@@ -1157,11 +1407,10 @@
     }
 
     /**************************************************************
-     * 5. マウス操作（右ドラッグ画面移動 / 左ドラッグ範囲選択 / Shiftグリッド吸着 / サイドボタンUndo・Redo）
+     * 6. マウス操作：画面移動 / 範囲選択 / グリッド吸着 / 新規生成＆矢印接続
      **************************************************************/
     svg.addEventListener('contextmenu', (ev) => ev.preventDefault());
 
-    // マウス戻るボタン (button=3) ＆ 進むボタン (button=4) で Undo / Redo
     window.addEventListener('mousedown', (ev) => {
       if (ev.button === 3) {
         ev.preventDefault();
@@ -1222,7 +1471,6 @@
         let dx = pt.x - dragStartWorld.x;
         let dy = pt.y - dragStartWorld.y;
 
-        // Shiftキー押下時は 24px のドットグリッドにピタッと沿わせる
         if (ev.shiftKey && primaryDragNodeId && initialNodeStates.has(primaryDragNodeId)) {
           snapIndicator.style.display = 'block';
           const primaryInit = initialNodeStates.get(primaryDragNodeId);
@@ -1236,7 +1484,7 @@
 
         initialNodeStates.forEach((init, id) => {
           const n = layer.nodes.find(item => item.id === id);
-          if (n) {
+          if (n && !isNodeLocked(n)) {
             n.x = Math.round(init.x + dx);
             n.y = Math.round(init.y + dy);
           }
@@ -1245,7 +1493,7 @@
       } else if (mode === 'resize' && activeResize) {
         const n = layer.nodes.find(item => item.id === activeResize.nodeId);
         const init = initialNodeStates.get(activeResize.nodeId);
-        if (n && init) {
+        if (n && init && !isNodeLocked(n)) {
           const dx = pt.x - dragStartWorld.x;
           const dy = pt.y - dragStartWorld.y;
           const minW = 72, minH = 48;
@@ -1275,9 +1523,9 @@
           }
           render();
         }
-      } else if (mode === 'connect' && activeConnect) {
-        activeConnect.currentX = pt.x;
-        activeConnect.currentY = pt.y;
+      } else if ((mode === 'connect' || mode === 'quickCreate') && activeConnect) {
+        activeConnect.currentX = ev.shiftKey ? snapToGrid(pt.x) : pt.x;
+        activeConnect.currentY = ev.shiftKey ? snapToGrid(pt.y) : pt.y;
         render();
       } else if (mode === 'marquee') {
         const x = Math.min(dragStartWorld.x, pt.x);
@@ -1300,6 +1548,66 @@
       }
     });
 
+    // 指定した親ノード＆ポートから新しい矩形を生成し、矢印で自動接続するヘルパー
+    function spawnConnectedNode(sourceNode, sourcePort, dropX, dropY, isClickOnly = false) {
+      const layer = currentLayer();
+      const w = 192, h = 84;
+      let pos;
+
+      if (isClickOnly) {
+        // ドラッグせずクリックだけした場合はその方向の定位置（96px先）に自動配置
+        const gap = 96;
+        if (sourcePort === 'right') pos = { x: sourceNode.x + sourceNode.width + gap, y: sourceNode.y + (sourceNode.height - h) / 2 };
+        else if (sourcePort === 'left') pos = { x: sourceNode.x - w - gap, y: sourceNode.y + (sourceNode.height - h) / 2 };
+        else if (sourcePort === 'bottom') pos = { x: sourceNode.x + (sourceNode.width - w) / 2, y: sourceNode.y + sourceNode.height + gap };
+        else pos = { x: sourceNode.x + (sourceNode.width - w) / 2, y: sourceNode.y - h - gap };
+      } else {
+        pos = computeNewNodePosFromCursor(dropX, dropY, sourcePort, w, h);
+      }
+
+      const newNode = {
+        id: uid('node'),
+        type: 'rect',
+        text: '新規矩形ノード',
+        x: snapToGrid(pos.x),
+        y: snapToGrid(pos.y),
+        width: w,
+        height: h,
+        color: sourceNode.isParentProxy ? '#dbeafe' : (sourceNode.color || '#dbeafe'),
+        fontSize: sourceNode.fontSize || 14,
+        fontFamily: sourceNode.fontFamily || "'Segoe UI', 'Meiryo', sans-serif",
+        parentGroupId: null,
+        childLayerId: null,
+        locked: false,
+        isParentProxy: false
+      };
+
+      // コンテナ内に生成された場合は自動でグループ化
+      const containers = layer.nodes.filter(n => n.type === 'container');
+      const cx = newNode.x + newNode.width / 2;
+      const cy = newNode.y + newNode.height / 2;
+      const hitCont = containers.find(c => cx >= c.x && cx <= c.x + c.width && cy >= c.y && cy <= c.y + c.height);
+      if (hitCont) newNode.parentGroupId = hitCont.id;
+
+      layer.nodes.push(newNode);
+
+      const targetPort = getOppositePort(sourcePort);
+      layer.edges.push({
+        id: uid('edge'),
+        source: sourceNode.id,
+        sourcePort: sourcePort,
+        target: newNode.id,
+        targetPort: targetPort,
+        label: '',
+        color: '#475569'
+      });
+
+      selectedNodeIds.clear();
+      selectedNodeIds.add(newNode.id);
+      selectedEdgeId = null;
+      showToast('✨ 新規矩形を生成して矢印を接続しました');
+    }
+
     window.addEventListener('mouseup', (ev) => {
       if (mode === 'none') return;
       const layer = currentLayer();
@@ -1308,7 +1616,6 @@
       if (mode === 'pan') {
         svg.classList.remove('panning');
       } else if (mode === 'dragNodes') {
-        // 実際に座標が変化していたらUndo履歴に記録
         let moved = false;
         initialNodeStates.forEach((init, id) => {
           const n = layer.nodes.find(item => item.id === id);
@@ -1318,7 +1625,7 @@
         const containers = layer.nodes.filter(n => n.type === 'container');
         selectedNodeIds.forEach(id => {
           const node = layer.nodes.find(n => n.id === id);
-          if (node && node.type !== 'container') {
+          if (node && node.type !== 'container' && !isNodeLocked(node)) {
             const cx = node.x + node.width / 2;
             const cy = node.y + node.height / 2;
             const hitCont = containers.find(c =>
@@ -1337,14 +1644,18 @@
           recordHistory(dragSnapshotBefore);
         }
         dragSnapshotBefore = null;
-      } else if (mode === 'connect' && activeConnect) {
+      } else if ((mode === 'connect' || mode === 'quickCreate') && activeConnect) {
         const pt = screenToWorld(ev.clientX, ev.clientY);
+        const srcNode = layer.nodes.find(n => n.id === activeConnect.sourceId);
+
+        // 既存ノードの上でドロップしたか判定
         const target = layer.nodes.find(n =>
           n.id !== activeConnect.sourceId &&
-          pt.x >= n.x - 20 && pt.x <= n.x + n.width + 20 &&
-          pt.y >= n.y - 20 && pt.y <= n.y + n.height + 20
+          pt.x >= n.x - 16 && pt.x <= n.x + n.width + 16 &&
+          pt.y >= n.y - 16 && pt.y <= n.y + n.height + 16
         );
-        if (target) {
+
+        if (target && mode === 'connect') {
           recordHistory();
           const targetPort = detectClosestPort(target, pt.x, pt.y);
           layer.edges.push({
@@ -1356,6 +1667,20 @@
             label: '',
             color: '#475569'
           });
+        } else if (srcNode) {
+          // 外側の緑「＋」ボタン操作時、または青ポートを余白へ35px以上ドラッグして離した場合は新規矩形を生成して自動接続
+          const dragDist = Math.hypot(pt.x - dragStartWorld.x, pt.y - dragStartWorld.y);
+          if (mode === 'quickCreate') {
+            recordHistory();
+            const isClickOnly = dragDist < 18;
+            spawnConnectedNode(srcNode, activeConnect.sourcePort, activeConnect.currentX, activeConnect.currentY, isClickOnly);
+          } else if (mode === 'connect') {
+            const p1 = getPortCoords(srcNode, activeConnect.sourcePort);
+            if (Math.hypot(pt.x - p1.x, pt.y - p1.y) > 45) {
+              recordHistory();
+              spawnConnectedNode(srcNode, activeConnect.sourcePort, pt.x, pt.y, false);
+            }
+          }
         }
         activeConnect = null;
       }
@@ -1392,12 +1717,31 @@
     }, { passive: false });
 
     /**************************************************************
-     * 6. ダブルクリック文字編集 ＆ ミニツールバー
+     * 7. ロック切替・ダブルクリック文字編集・ミニツールバー
      **************************************************************/
     miniToolbar.addEventListener('mousedown', (ev) => ev.stopPropagation());
     inlineEditor.addEventListener('mousedown', (ev) => ev.stopPropagation());
 
+    function toggleLockSelection() {
+      const layer = currentLayer();
+      const targetNodes = layer.nodes.filter(n => selectedNodeIds.has(n.id) && !n.isParentProxy);
+      if (targetNodes.length === 0) {
+        if ([...selectedNodeIds].some(id => layer.nodes.find(n => n.id === id && n.isParentProxy))) {
+          showToast('🔒 親階層アンカーノードのロックは解除できません');
+        } else {
+          showToast('ロックを切り替える要素を選択してください');
+        }
+        return;
+      }
+      recordHistory();
+      const anyUnlocked = targetNodes.some(n => !n.locked);
+      targetNodes.forEach(n => n.locked = anyUnlocked);
+      render();
+      showToast(anyUnlocked ? '🔒 選択要素をロックしました (移動・編集不可)' : '🔓 ロックを解除しました');
+    }
+
     function startInlineEdit(node) {
+      if (isNodeLocked(node)) return;
       editingNodeId = node.id;
       selectedNodeIds.clear();
       selectedNodeIds.add(node.id);
@@ -1418,7 +1762,7 @@
     function commitInlineEdit() {
       if (!editingNodeId) return;
       const node = currentLayer().nodes.find(n => n.id === editingNodeId);
-      if (node && node.text !== inlineEditor.value) {
+      if (node && !isNodeLocked(node) && node.text !== inlineEditor.value) {
         recordHistory();
         node.text = inlineEditor.value;
         if (node.childLayerId && projectData.layers[node.childLayerId]) {
@@ -1462,6 +1806,12 @@
       miniToolbar.style.top = `${Math.max(48, topY)}px`;
 
       const first = selectedNodes[0];
+      const allLocked = selectedNodes.every(n => isNodeLocked(n));
+      const lockBtn = document.getElementById('mt-lock');
+      lockBtn.textContent = allLocked ? '🔒 解除' : '🔓 ロック';
+      lockBtn.className = allLocked ? 'btn btn-warning' : 'btn';
+      lockBtn.disabled = selectedNodes.every(n => n.isParentProxy);
+
       document.getElementById('mt-font').value = first.fontFamily || "'Segoe UI', 'Meiryo', sans-serif";
       document.getElementById('mt-font-slider').value = first.fontSize || 14;
       document.getElementById('mt-font-val').textContent = `${first.fontSize || 14}px`;
@@ -1469,13 +1819,20 @@
     }
 
     function applyToSelectedNodes(fn, shouldRecord = true) {
-      if (shouldRecord) recordHistory();
       const layer = currentLayer();
-      layer.nodes.forEach(n => {
-        if (selectedNodeIds.has(n.id)) fn(n);
-      });
+      const editable = layer.nodes.filter(n => selectedNodeIds.has(n.id) && !isNodeLocked(n));
+      if (editable.length === 0) {
+        showToast('🔒 ロック中のため変更できません');
+        return;
+      }
+      if (shouldRecord) recordHistory();
+      editable.forEach(n => fn(n));
       render();
     }
+
+    document.getElementById('mt-lock').addEventListener('click', toggleLockSelection);
+    document.getElementById('btn-lock-toggle').addEventListener('click', toggleLockSelection);
+    document.getElementById('prop-lock-btn').addEventListener('click', toggleLockSelection);
 
     document.getElementById('mt-font').addEventListener('change', (e) => applyToSelectedNodes(n => n.fontFamily = e.target.value));
     document.getElementById('mt-font-slider').addEventListener('change', (e) => applyToSelectedNodes(n => n.fontSize = parseInt(e.target.value, 10)));
@@ -1488,13 +1845,13 @@
     document.getElementById('mt-del').addEventListener('click', () => deleteSelection());
 
     /**************************************************************
-     * 7. 階層移動（ドリルダウン）＆ ツリー表示
+     * 8. 階層移動（ドリルダウン）＆ 親矩形の配置
      **************************************************************/
     function enterNodeLayer(nodeId) {
       commitInlineEdit();
       const layer = currentLayer();
       const node = layer.nodes.find(n => n.id === nodeId);
-      if (!node || node.type === 'container') return;
+      if (!node || node.type === 'container' || node.isParentProxy) return;
 
       recordHistory();
       if (!node.childLayerId || !projectData.layers[node.childLayerId]) {
@@ -1509,6 +1866,8 @@
           edges: []
         };
       }
+      // 遷移先レイヤーに親矩形（編集不可アンカー）を配置
+      ensureParentProxyNode(projectData.layers[node.childLayerId]);
       switchLayer(node.childLayerId, false);
     }
 
@@ -1516,6 +1875,7 @@
       if (!projectData.layers[layerId]) return;
       if (saveHist && projectData.currentLayerId !== layerId) recordHistory();
       projectData.currentLayerId = layerId;
+      ensureParentProxyNode(projectData.layers[layerId]);
       selectedNodeIds.clear();
       selectedEdgeId = null;
       hoveredNodeId = null;
@@ -1556,10 +1916,11 @@
       function buildTree(layerId, depth) {
         const l = projectData.layers[layerId];
         if (!l) return;
+        const realCount = l.nodes.filter(n => !n.isParentProxy).length;
         const item = document.createElement('div');
         item.className = 'tree-item' + (projectData.currentLayerId === layerId ? ' active' : '');
         item.style.paddingLeft = `${8 + depth * 14}px`;
-        item.innerHTML = `<span>📁 ${l.name}</span><span style="font-size:10px; color:#9ca3af;">${l.nodes.length}</span>`;
+        item.innerHTML = `<span>📁 ${l.name}</span><span style="font-size:10px; color:#9ca3af;">${realCount}</span>`;
         item.addEventListener('click', () => switchLayer(layerId));
         treeEl.appendChild(item);
 
@@ -1573,7 +1934,7 @@
     }
 
     /**************************************************************
-     * 8. コピー＆ペースト・削除・キーボードショートカット (Undo/Redo対応)
+     * 9. コピー＆ペースト・削除・ショートカット
      **************************************************************/
     function deepCloneLayer(sourceLayerId, newParentLayerId, newParentNodeId) {
       const orig = projectData.layers[sourceLayerId];
@@ -1582,7 +1943,7 @@
       const idMap = new Map();
 
       const clonedNodes = orig.nodes.map(n => {
-        const newId = uid(n.type === 'container' ? 'cont' : 'node');
+        const newId = n.isParentProxy ? `parent_proxy_${newLayerId}` : uid(n.type === 'container' ? 'cont' : 'node');
         idMap.set(n.id, newId);
         return { ...JSON.parse(JSON.stringify(n)), id: newId };
       });
@@ -1618,15 +1979,19 @@
       const layer = currentLayer();
       if (selectedNodeIds.size === 0) return;
 
-      const targetIds = new Set(selectedNodeIds);
+      const targetIds = new Set();
       selectedNodeIds.forEach(id => {
         const n = layer.nodes.find(item => item.id === id);
-        if (n && n.type === 'container') {
-          layer.nodes.filter(ch => ch.parentGroupId === n.id).forEach(ch => targetIds.add(ch.id));
+        if (n && !n.isParentProxy) {
+          targetIds.add(n.id);
+          if (n.type === 'container') {
+            layer.nodes.filter(ch => ch.parentGroupId === n.id && !ch.isParentProxy).forEach(ch => targetIds.add(ch.id));
+          }
         }
       });
 
       const nodesToCopy = layer.nodes.filter(n => targetIds.has(n.id));
+      if (nodesToCopy.length === 0) return showToast('親階層アンカーノードはコピーできません');
       const edgesToCopy = layer.edges.filter(e => targetIds.has(e.source) && targetIds.has(e.target));
 
       clipboardData = {
@@ -1651,7 +2016,8 @@
           ...JSON.parse(JSON.stringify(n)),
           id: newId,
           x: n.x + GRID_SIZE,
-          y: n.y + GRID_SIZE
+          y: n.y + GRID_SIZE,
+          isParentProxy: false
         };
       });
 
@@ -1684,9 +2050,19 @@
     function deleteSelection() {
       const layer = currentLayer();
       if (selectedNodeIds.size > 0) {
+        const deletableIds = new Set(
+          [...selectedNodeIds].filter(id => {
+            const n = layer.nodes.find(item => item.id === id);
+            return n && !isNodeLocked(n);
+          })
+        );
+        if (deletableIds.size === 0) {
+          showToast('🔒 ロック中（または親階層ノード）のため削除できません');
+          return;
+        }
         recordHistory();
-        layer.nodes = layer.nodes.filter(n => !selectedNodeIds.has(n.id));
-        layer.edges = layer.edges.filter(e => !selectedNodeIds.has(e.source) && !selectedNodeIds.has(e.target));
+        layer.nodes = layer.nodes.filter(n => !deletableIds.has(n.id));
+        layer.edges = layer.edges.filter(e => !deletableIds.has(e.source) && !deletableIds.has(e.target));
         selectedNodeIds.clear();
         render();
       } else if (selectedEdgeId) {
@@ -1708,6 +2084,9 @@
       } else if ((ev.ctrlKey || ev.metaKey) && key === 'y') {
         ev.preventDefault();
         performRedo();
+      } else if ((ev.ctrlKey || ev.metaKey) && key === 'l') {
+        ev.preventDefault();
+        toggleLockSelection();
       } else if ((ev.ctrlKey || ev.metaKey) && key === 'c') {
         ev.preventDefault();
         copySelection();
@@ -1721,7 +2100,7 @@
     });
 
     /**************************************************************
-     * 9. 右パネル＆リサイザー
+     * 10. 右パネル＆リサイザー
      **************************************************************/
     function updatePropertyPanel() {
       const emptyEl = document.getElementById('prop-empty');
@@ -1738,6 +2117,15 @@
         const selectedNodes = layer.nodes.filter(n => selectedNodeIds.has(n.id));
         const first = selectedNodes[0];
         const multiBadge = document.getElementById('prop-multi-badge');
+        const proxyNotice = document.getElementById('prop-proxy-notice');
+        const lockBtn = document.getElementById('prop-lock-btn');
+        const locked = selectedNodes.every(n => isNodeLocked(n));
+        const isProxy = selectedNodes.some(n => n.isParentProxy);
+
+        proxyNotice.style.display = isProxy ? 'block' : 'none';
+        lockBtn.style.display = isProxy ? 'none' : 'inline-flex';
+        lockBtn.textContent = locked ? '🔒 ロック中 (クリックで解除 / Ctrl+L)' : '🔓 編集・移動をロックする (Ctrl+L)';
+        lockBtn.className = locked ? 'btn btn-warning' : 'btn';
 
         if (selectedNodes.length > 1) {
           multiBadge.style.display = 'block';
@@ -1749,11 +2137,17 @@
           multiBadge.style.display = 'none';
           document.getElementById('prop-text-group').style.display = 'block';
           document.getElementById('prop-pos-group').style.display = 'grid';
-          document.getElementById('btn-enter-layer').style.display = first.type === 'container' ? 'none' : 'inline-flex';
+          document.getElementById('btn-enter-layer').style.display = (first.type === 'container' || first.isParentProxy) ? 'none' : 'inline-flex';
           document.getElementById('prop-text').value = first.text;
           document.getElementById('prop-w').value = first.width;
           document.getElementById('prop-h').value = first.height;
         }
+
+        // ロック中は入力欄を無効化
+        ['prop-text', 'prop-color', 'prop-fontsize', 'prop-fontfamily', 'prop-w', 'prop-h'].forEach(id => {
+          document.getElementById(id).disabled = locked;
+        });
+
         document.getElementById('prop-color').value = first.color || '#dbeafe';
         document.getElementById('prop-fontsize').value = first.fontSize || 14;
         document.getElementById('prop-fontfamily').value = first.fontFamily || "'Segoe UI', 'Meiryo', sans-serif";
@@ -1776,7 +2170,7 @@
     document.getElementById('prop-text').addEventListener('change', (e) => {
       applyToSelectedNodes(n => {
         n.text = e.target.value;
-        if (n.childLayerId && projectData.layers[n.childLayerId]) {
+        if (n.childLayerId && projectData.layers[node?.childLayerId || n.childLayerId]) {
           projectData.layers[n.childLayerId].name = n.text || 'サブ階層';
         }
       }, true);
@@ -1819,14 +2213,16 @@
         type,
         text: isCont ? '新規グループコンテナ' : '新規矩形ノード',
         x: snapToGrid((-panX + 260) / zoom),
-        y: snapToGrid((-panY + 140) / zoom),
+        y: snapToGrid((-panY + 180) / zoom),
         width: isCont ? 360 : 192,
         height: isCont ? 240 : 84,
         color: isCont ? '#e2e8f0' : '#dbeafe',
         fontSize: 14,
         fontFamily: "'Segoe UI', 'Meiryo', sans-serif",
         parentGroupId: null,
-        childLayerId: null
+        childLayerId: null,
+        locked: false,
+        isParentProxy: false
       };
       layer.nodes.push(newNode);
       selectedNodeIds.clear();
@@ -1881,7 +2277,7 @@
     setupResizer(rightResizer, rightPanel, false);
 
     /**************************************************************
-     * 10. プロジェクト一覧モーダル ＆ URLルーティング連携
+     * 11. プロジェクト一覧モーダル ＆ URLルーティング連携
      **************************************************************/
     async function fetchProjectList() {
       const container = document.getElementById('project-list-container');
@@ -2030,8 +2426,7 @@
       });
     });
 
-    // マウスの戻るボタンでブラウザのpopstateが発火した際もページ離脱を防ぎUndoを実行
-    window.addEventListener('popstate', (ev) => {
+    window.addEventListener('popstate', () => {
       if (undoStack.length > 0) {
         performUndo();
         const targetPath = `/p/${encodeURIComponent(projectData.projectId)}`;
