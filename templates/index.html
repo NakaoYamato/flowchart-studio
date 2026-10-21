@@ -26,51 +26,63 @@
       overflow: hidden;
     }
 
-    /* Header */
+    /* Header (ウィンドウ縮小時に崩れないよう flex-shrink と overflow を制御) */
     header {
-      height: 50px;
+      min-height: 50px;
       background: var(--panel-bg);
       border-bottom: 1px solid var(--border-color);
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 0 12px;
+      padding: 4px 10px;
       gap: 8px;
       z-index: 30;
+      overflow-x: auto;
+      overflow-y: hidden;
+      scrollbar-width: thin;
     }
+    header::-webkit-scrollbar { height: 4px; }
+    header::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 2px; }
+
     .header-left, .header-center, .header-right {
       display: flex;
       align-items: center;
       gap: 6px;
+      flex-shrink: 0;
     }
     .app-title {
       font-weight: 700;
       font-size: 15px;
       color: #60a5fa;
-      margin-right: 4px;
+      margin-right: 2px;
       white-space: nowrap;
+      flex-shrink: 0;
     }
     .btn {
       background: #2c313a;
       color: var(--text-main);
       border: 1px solid #3e4451;
-      padding: 6px 11px;
+      padding: 6px 10px;
       border-radius: 6px;
       font-size: 12px;
       cursor: pointer;
       display: inline-flex;
       align-items: center;
-      gap: 5px;
+      gap: 4px;
       transition: 0.15s;
       white-space: nowrap;
+      flex-shrink: 0;
     }
-    .btn:hover { background: #3a404c; border-color: #525a6b; }
+    .btn:hover:not(:disabled) { background: #3a404c; border-color: #525a6b; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
     .btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
-    .btn-primary:hover { background: var(--accent-hover); }
+    .btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
     .btn-success { background: #10b981; border-color: #059669; color: #fff; font-weight: 600; }
-    .btn-success:hover { background: #059669; }
+    .btn-success:hover:not(:disabled) { background: #059669; }
     .btn-danger { background: #ef4444; border-color: #dc2626; color: #fff; }
-    .btn-danger:hover { background: #dc2626; }
+    .btn-danger:hover:not(:disabled) { background: #dc2626; }
+
+    /* 右上プロジェクト名バッジの縦崩れ防止 */
     .project-badge {
       background: #181a1f;
       border: 1px solid #3e4451;
@@ -82,6 +94,16 @@
       display: inline-flex;
       align-items: center;
       gap: 6px;
+      white-space: nowrap;
+      flex-shrink: 0;
+      max-width: 200px;
+    }
+    #current-project-label {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      display: inline-block;
+      max-width: 160px;
     }
 
     /* Breadcrumb Bar */
@@ -92,25 +114,36 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 0 14px;
+      padding: 0 12px;
       font-size: 12px;
       z-index: 25;
+      gap: 12px;
+      overflow-x: auto;
+      white-space: nowrap;
     }
+    .subbar::-webkit-scrollbar { display: none; }
     .breadcrumbs {
       display: flex;
       align-items: center;
       gap: 6px;
-      overflow-x: auto;
+      flex-shrink: 0;
     }
     .crumb {
       color: #93c5fd;
       cursor: pointer;
       padding: 2px 6px;
       border-radius: 4px;
+      white-space: nowrap;
     }
     .crumb:hover { background: rgba(59, 130, 246, 0.2); }
     .crumb.active { color: #fff; font-weight: 600; cursor: default; }
-    .hint-text { color: var(--text-sub); font-size: 11px; }
+    .hint-text {
+      color: var(--text-sub);
+      font-size: 11px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
 
     /* Workspace Layout */
     .workspace {
@@ -125,9 +158,10 @@
       flex-direction: column;
       overflow-y: auto;
       z-index: 20;
+      flex-shrink: 0;
     }
-    #left-panel { width: 240px; min-width: 160px; max-width: 480px; border-right: 1px solid var(--border-color); }
-    #right-panel { width: 270px; min-width: 180px; max-width: 500px; border-left: 1px solid var(--border-color); }
+    #left-panel { width: 230px; min-width: 150px; max-width: 450px; border-right: 1px solid var(--border-color); }
+    #right-panel { width: 260px; min-width: 170px; max-width: 480px; border-left: 1px solid var(--border-color); }
     .side-panel.hidden { display: none !important; }
 
     .resizer {
@@ -136,6 +170,7 @@
       cursor: col-resize;
       z-index: 22;
       transition: background 0.15s;
+      flex-shrink: 0;
     }
     .resizer:hover, .resizer.dragging { background: var(--accent); }
     .resizer.hidden { display: none !important; }
@@ -181,6 +216,23 @@
       cursor: default;
     }
     #canvas-svg.panning { cursor: grabbing !important; }
+
+    /* Grid Snap Indicator Badge */
+    #snap-indicator {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: rgba(37, 99, 235, 0.9);
+      color: #fff;
+      padding: 4px 10px;
+      border-radius: 5px;
+      font-size: 11px;
+      font-weight: 600;
+      pointer-events: none;
+      display: none;
+      z-index: 35;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+    }
 
     /* Floating Mini Toolbar */
     #mini-toolbar {
@@ -241,7 +293,7 @@
     }
     .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 
-    /* Project Selector Modal (起動時＆一覧表示) */
+    /* Project Selector Modal */
     .modal-backdrop {
       position: fixed;
       inset: 0;
@@ -359,18 +411,20 @@
     </div>
 
     <div class="header-center">
+      <button class="btn" id="btn-undo" title="元に戻す (Ctrl+Z / マウス戻るボタン)" disabled>↶ 戻す</button>
+      <button class="btn" id="btn-redo" title="やり直す (Ctrl+Y / マウス進むボタン)" disabled>↷ 進む</button>
       <button class="btn" id="btn-copy" title="Ctrl+C">コピー</button>
       <button class="btn" id="btn-paste" title="Ctrl+V">貼り付け</button>
       <button class="btn btn-danger" id="btn-delete" title="Delete">削除</button>
-      <button class="btn" id="btn-reset-view">視点100%</button>
+      <button class="btn" id="btn-reset-view" title="視点を100%に戻す">視点100%</button>
     </div>
 
     <div class="header-right">
-      <div class="project-badge" title="現在開いているプロジェクトID（URLも連動します）">
+      <div class="project-badge" title="現在開いているプロジェクトID">
         <span>📁</span>
         <span id="current-project-label">未選択</span>
       </div>
-      <button class="btn" id="btn-copy-url" title="このプロジェクトの専用URLをコピー">🔗 URLコピー</button>
+      <button class="btn" id="btn-copy-url" title="このプロジェクトの専用URLをコピー">🔗 URL</button>
       <button class="btn btn-success" id="btn-cloud-save">☁ 保存</button>
       <button class="btn" id="btn-toggle-right" title="右パネルの表示切替">右パネル ▶</button>
     </div>
@@ -380,7 +434,7 @@
   <div class="subbar">
     <div class="breadcrumbs" id="breadcrumbs"></div>
     <div class="hint-text">
-      【操作】左ドラッグ：移動 / 範囲一括選択 ｜ 右ドラッグ：画面移動(パン) ｜ ホイール：拡縮 ｜ ダブルクリック：文字編集 ｜ 右上バッジ：内部階層へ移動
+      【操作】左ドラッグ：移動 / 範囲選択 ｜ Shift+移動：グリッド吸着 ｜ 右ドラッグ：画面移動 ｜ Ctrl+Z/Y・マウス戻る/進む：Undo/Redo
     </div>
   </div>
 
@@ -405,6 +459,8 @@
 
     <!-- Canvas Area -->
     <main id="canvas-container">
+      <div id="snap-indicator">🧲 Shift グリッドスナップ中 (24px)</div>
+
       <svg id="canvas-svg">
         <defs>
           <pattern id="grid-pattern" width="24" height="24" patternUnits="userSpaceOnUse">
@@ -521,7 +577,7 @@
         <div>
           <div class="panel-title">新規プロジェクトを作成</div>
           <div class="new-project-box">
-            <input type="text" id="new-project-input" class="form-control" placeholder="新しいプロジェクト名 (例: game_system_flow)" style="flex:1;">
+            <input type="text" id="new-project-input" class="form-control" placeholder="新しいプロジェクト名 (例: めんこバース設計)" style="flex:1;">
             <button class="btn btn-primary" id="btn-create-project">＋ 新規作成して開く</button>
           </div>
         </div>
@@ -543,8 +599,11 @@
 
   <script>
     /**************************************************************
-     * 1. プロジェクトデータ初期化テンプレート
+     * 1. プロジェクトデータ初期化テンプレート ＆ 定数
      **************************************************************/
+    const GRID_SIZE = 24; // 背景ドットグリッドの間隔 (24px)
+    const snapToGrid = (val) => Math.round(val / GRID_SIZE) * GRID_SIZE;
+
     function createEmptyProject(projectId) {
       return {
         projectId: projectId,
@@ -558,7 +617,7 @@
             nodes: [
               {
                 id: "node_start", type: "rect", text: "メイン処理 (ダブルクリックで文字編集)",
-                x: 240, y: 150, width: 220, height: 85,
+                x: 240, y: 144, width: 216, height: 96,
                 color: "#dbeafe", fontSize: 14, fontFamily: "'Segoe UI', 'Meiryo', sans-serif",
                 parentGroupId: null, childLayerId: null
               }
@@ -572,7 +631,72 @@
     let projectData = createEmptyProject("demo_project_01");
 
     /**************************************************************
-     * 2. エディタ状態管理
+     * 2. Undo / Redo 履歴管理システム
+     **************************************************************/
+    const MAX_HISTORY = 60;
+    let undoStack = [];
+    let redoStack = [];
+    let dragSnapshotBefore = null; // ドラッグ開始前のスナップショット
+
+    function cloneState(data) {
+      return JSON.parse(JSON.stringify(data));
+    }
+
+    function clearHistory() {
+      undoStack = [];
+      redoStack = [];
+      updateUndoRedoButtons();
+    }
+
+    function recordHistory(customBeforeState = null) {
+      const stateToPush = customBeforeState || cloneState(projectData);
+      // 直前の状態と全く同じなら積まない
+      if (undoStack.length > 0 && JSON.stringify(undoStack[undoStack.length - 1]) === JSON.stringify(stateToPush)) {
+        return;
+      }
+      undoStack.push(stateToPush);
+      if (undoStack.length > MAX_HISTORY) undoStack.shift();
+      redoStack = [];
+      updateUndoRedoButtons();
+    }
+
+    function performUndo() {
+      commitInlineEdit();
+      if (undoStack.length === 0) {
+        showToast('これ以上元に戻せません');
+        return;
+      }
+      redoStack.push(cloneState(projectData));
+      projectData = undoStack.pop();
+      selectedNodeIds.clear();
+      selectedEdgeId = null;
+      updateUndoRedoButtons();
+      render();
+      showToast('↶ 元に戻しました (Undo)');
+    }
+
+    function performRedo() {
+      commitInlineEdit();
+      if (redoStack.length === 0) {
+        showToast('これ以上やり直せません');
+        return;
+      }
+      undoStack.push(cloneState(projectData));
+      projectData = redoStack.pop();
+      selectedNodeIds.clear();
+      selectedEdgeId = null;
+      updateUndoRedoButtons();
+      render();
+      showToast('↷ やり直しました (Redo)');
+    }
+
+    function updateUndoRedoButtons() {
+      document.getElementById('btn-undo').disabled = (undoStack.length === 0);
+      document.getElementById('btn-redo').disabled = (redoStack.length === 0);
+    }
+
+    /**************************************************************
+     * 3. エディタ状態管理
      **************************************************************/
     let panX = 0, panY = 0, zoom = 1;
     let selectedNodeIds = new Set();
@@ -581,6 +705,7 @@
     let clipboardData = null;
 
     let mode = 'none';
+    let primaryDragNodeId = null; // Shiftグリッドスナップの基準ノード
     let dragStartScreen = { x: 0, y: 0 };
     let dragStartWorld = { x: 0, y: 0 };
     let initialPan = { x: 0, y: 0 };
@@ -602,6 +727,7 @@
     const miniToolbar = document.getElementById('mini-toolbar');
     const inlineEditor = document.getElementById('inline-editor');
     const projectModal = document.getElementById('project-modal');
+    const snapIndicator = document.getElementById('snap-indicator');
 
     const uid = (prefix) => `${prefix}_${Math.random().toString(36).substring(2, 9)}`;
     const currentLayer = () => projectData.layers[projectData.currentLayerId] || projectData.layers["root"];
@@ -610,20 +736,24 @@
       const t = document.getElementById('toast');
       t.textContent = msg;
       t.classList.add('show');
-      setTimeout(() => t.classList.remove('show'), 2800);
+      clearTimeout(showToast._timer);
+      showToast._timer = setTimeout(() => t.classList.remove('show'), 2400);
     }
 
     function updateProjectHeaderAndUrl(projectId, pushHistory = true) {
       projectData.projectId = projectId;
-      document.getElementById('current-project-label').textContent = projectId;
+      const labelEl = document.getElementById('current-project-label');
+      labelEl.textContent = projectId;
+      labelEl.parentElement.title = `プロジェクト: ${projectId}`;
       document.title = `${projectId} - FlowHierarchy Studio`;
 
-      // ブラウザのアドレスバーを /p/{プロジェクトID} に変更（ブックマーク・ショートカット用）
       if (pushHistory) {
         const targetPath = `/p/${encodeURIComponent(projectId)}`;
         if (window.location.pathname !== targetPath) {
           window.history.pushState({ projectId }, '', targetPath);
         }
+        // マウスの戻るボタンでページ遷移してしまわないようダミー履歴ガードを積む
+        window.history.pushState({ projectId, guard: true }, '', targetPath);
       }
     }
 
@@ -642,7 +772,7 @@
     }
 
     /**************************************************************
-     * 3. 描画エンジン (SVG)
+     * 4. 描画エンジン (SVG)
      **************************************************************/
     function render() {
       updateViewportTransform();
@@ -835,18 +965,16 @@
         }
         lastClickInfo = { id: node.id, time: now };
 
-        if (ev.shiftKey) {
-          if (selectedNodeIds.has(node.id)) selectedNodeIds.delete(node.id);
-          else selectedNodeIds.add(node.id);
-        } else {
-          if (!selectedNodeIds.has(node.id)) {
-            selectedNodeIds.clear();
-            selectedNodeIds.add(node.id);
-          }
+        if (!selectedNodeIds.has(node.id)) {
+          if (!ev.shiftKey) selectedNodeIds.clear();
+          selectedNodeIds.add(node.id);
         }
         selectedEdgeId = null;
 
+        // ドラッグ開始前の状態をスナップショット保存（移動確定時にUndo履歴へ登録）
+        dragSnapshotBefore = cloneState(projectData);
         mode = 'dragNodes';
+        primaryDragNodeId = node.id;
         dragStartWorld = screenToWorld(ev.clientX, ev.clientY);
         initialNodeStates.clear();
 
@@ -898,6 +1026,7 @@
           if (ev.button !== 0) return;
           ev.stopPropagation();
           commitInlineEdit();
+          dragSnapshotBefore = cloneState(projectData);
           mode = 'resize';
           activeResize = { nodeId: node.id, dir: h.dir };
           dragStartWorld = screenToWorld(ev.clientX, ev.clientY);
@@ -1028,9 +1157,29 @@
     }
 
     /**************************************************************
-     * 4. マウス操作：右ドラッグで画面移動 / 左ドラッグで一括範囲選択
+     * 5. マウス操作（右ドラッグ画面移動 / 左ドラッグ範囲選択 / Shiftグリッド吸着 / サイドボタンUndo・Redo）
      **************************************************************/
     svg.addEventListener('contextmenu', (ev) => ev.preventDefault());
+
+    // マウス戻るボタン (button=3) ＆ 進むボタン (button=4) で Undo / Redo
+    window.addEventListener('mousedown', (ev) => {
+      if (ev.button === 3) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        performUndo();
+      } else if (ev.button === 4) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        performRedo();
+      }
+    }, true);
+
+    window.addEventListener('mouseup', (ev) => {
+      if (ev.button === 3 || ev.button === 4) {
+        ev.preventDefault();
+        ev.stopPropagation();
+      }
+    }, true);
 
     svg.addEventListener('mousedown', (ev) => {
       commitInlineEdit();
@@ -1070,8 +1219,21 @@
       const layer = currentLayer();
 
       if (mode === 'dragNodes') {
-        const dx = pt.x - dragStartWorld.x;
-        const dy = pt.y - dragStartWorld.y;
+        let dx = pt.x - dragStartWorld.x;
+        let dy = pt.y - dragStartWorld.y;
+
+        // Shiftキー押下時は 24px のドットグリッドにピタッと沿わせる
+        if (ev.shiftKey && primaryDragNodeId && initialNodeStates.has(primaryDragNodeId)) {
+          snapIndicator.style.display = 'block';
+          const primaryInit = initialNodeStates.get(primaryDragNodeId);
+          const snappedX = snapToGrid(primaryInit.x + dx);
+          const snappedY = snapToGrid(primaryInit.y + dy);
+          dx = snappedX - primaryInit.x;
+          dy = snappedY - primaryInit.y;
+        } else {
+          snapIndicator.style.display = 'none';
+        }
+
         initialNodeStates.forEach((init, id) => {
           const n = layer.nodes.find(item => item.id === id);
           if (n) {
@@ -1086,18 +1248,28 @@
         if (n && init) {
           const dx = pt.x - dragStartWorld.x;
           const dy = pt.y - dragStartWorld.y;
-          const minW = 70, minH = 45;
+          const minW = 72, minH = 48;
           const d = activeResize.dir;
+          const useSnap = ev.shiftKey;
+          snapIndicator.style.display = useSnap ? 'block' : 'none';
 
-          if (d.includes('e')) n.width = Math.max(minW, Math.round(init.width + dx));
-          if (d.includes('s')) n.height = Math.max(minH, Math.round(init.height + dy));
+          if (d.includes('e')) {
+            const rawW = init.width + dx;
+            n.width = Math.max(minW, useSnap ? snapToGrid(rawW) : Math.round(rawW));
+          }
+          if (d.includes('s')) {
+            const rawH = init.height + dy;
+            n.height = Math.max(minH, useSnap ? snapToGrid(rawH) : Math.round(rawH));
+          }
           if (d.includes('w')) {
-            const newW = Math.max(minW, Math.round(init.width - dx));
+            const rawW = init.width - dx;
+            const newW = Math.max(minW, useSnap ? snapToGrid(rawW) : Math.round(rawW));
             n.x = init.x + (init.width - newW);
             n.width = newW;
           }
           if (d.includes('n')) {
-            const newH = Math.max(minH, Math.round(init.height - dy));
+            const rawH = init.height - dy;
+            const newH = Math.max(minH, useSnap ? snapToGrid(rawH) : Math.round(rawH));
             n.y = init.y + (init.height - newH);
             n.height = newH;
           }
@@ -1131,10 +1303,18 @@
     window.addEventListener('mouseup', (ev) => {
       if (mode === 'none') return;
       const layer = currentLayer();
+      snapIndicator.style.display = 'none';
 
       if (mode === 'pan') {
         svg.classList.remove('panning');
       } else if (mode === 'dragNodes') {
+        // 実際に座標が変化していたらUndo履歴に記録
+        let moved = false;
+        initialNodeStates.forEach((init, id) => {
+          const n = layer.nodes.find(item => item.id === id);
+          if (n && (n.x !== init.x || n.y !== init.y)) moved = true;
+        });
+
         const containers = layer.nodes.filter(n => n.type === 'container');
         selectedNodeIds.forEach(id => {
           const node = layer.nodes.find(n => n.id === id);
@@ -1147,6 +1327,16 @@
             node.parentGroupId = hitCont ? hitCont.id : null;
           }
         });
+
+        if (moved && dragSnapshotBefore) {
+          recordHistory(dragSnapshotBefore);
+        }
+        dragSnapshotBefore = null;
+      } else if (mode === 'resize' && activeResize) {
+        if (dragSnapshotBefore) {
+          recordHistory(dragSnapshotBefore);
+        }
+        dragSnapshotBefore = null;
       } else if (mode === 'connect' && activeConnect) {
         const pt = screenToWorld(ev.clientX, ev.clientY);
         const target = layer.nodes.find(n =>
@@ -1155,6 +1345,7 @@
           pt.y >= n.y - 20 && pt.y <= n.y + n.height + 20
         );
         if (target) {
+          recordHistory();
           const targetPort = detectClosestPort(target, pt.x, pt.y);
           layer.edges.push({
             id: uid('edge'),
@@ -1170,6 +1361,7 @@
       }
 
       mode = 'none';
+      primaryDragNodeId = null;
       activeResize = null;
       marqueeRect = null;
       render();
@@ -1200,7 +1392,7 @@
     }, { passive: false });
 
     /**************************************************************
-     * 5. ダブルクリック文字編集 ＆ ミニツールバー
+     * 6. ダブルクリック文字編集 ＆ ミニツールバー
      **************************************************************/
     miniToolbar.addEventListener('mousedown', (ev) => ev.stopPropagation());
     inlineEditor.addEventListener('mousedown', (ev) => ev.stopPropagation());
@@ -1226,7 +1418,8 @@
     function commitInlineEdit() {
       if (!editingNodeId) return;
       const node = currentLayer().nodes.find(n => n.id === editingNodeId);
-      if (node) {
+      if (node && node.text !== inlineEditor.value) {
+        recordHistory();
         node.text = inlineEditor.value;
         if (node.childLayerId && projectData.layers[node.childLayerId]) {
           projectData.layers[node.childLayerId].name = node.text || '無題の階層';
@@ -1275,7 +1468,8 @@
       document.getElementById('mt-color').value = first.color || '#dbeafe';
     }
 
-    function applyToSelectedNodes(fn) {
+    function applyToSelectedNodes(fn, shouldRecord = true) {
+      if (shouldRecord) recordHistory();
       const layer = currentLayer();
       layer.nodes.forEach(n => {
         if (selectedNodeIds.has(n.id)) fn(n);
@@ -1284,15 +1478,17 @@
     }
 
     document.getElementById('mt-font').addEventListener('change', (e) => applyToSelectedNodes(n => n.fontFamily = e.target.value));
-    document.getElementById('mt-font-slider').addEventListener('input', (e) => applyToSelectedNodes(n => n.fontSize = parseInt(e.target.value, 10)));
+    document.getElementById('mt-font-slider').addEventListener('change', (e) => applyToSelectedNodes(n => n.fontSize = parseInt(e.target.value, 10)));
+    document.getElementById('mt-font-slider').addEventListener('input', (e) => applyToSelectedNodes(n => n.fontSize = parseInt(e.target.value, 10), false));
     document.getElementById('mt-font-dec').addEventListener('click', () => applyToSelectedNodes(n => n.fontSize = Math.max(8, (n.fontSize || 14) - 2)));
     document.getElementById('mt-font-inc').addEventListener('click', () => applyToSelectedNodes(n => n.fontSize = Math.min(72, (n.fontSize || 14) + 2)));
-    document.getElementById('mt-color').addEventListener('input', (e) => applyToSelectedNodes(n => n.color = e.target.value));
+    document.getElementById('mt-color').addEventListener('change', (e) => applyToSelectedNodes(n => n.color = e.target.value));
+    document.getElementById('mt-color').addEventListener('input', (e) => applyToSelectedNodes(n => n.color = e.target.value, false));
     document.getElementById('mt-copy').addEventListener('click', () => { copySelection(); pasteSelection(); });
     document.getElementById('mt-del').addEventListener('click', () => deleteSelection());
 
     /**************************************************************
-     * 6. 階層移動（ドリルダウン）＆ ツリー表示
+     * 7. 階層移動（ドリルダウン）＆ ツリー表示
      **************************************************************/
     function enterNodeLayer(nodeId) {
       commitInlineEdit();
@@ -1300,6 +1496,7 @@
       const node = layer.nodes.find(n => n.id === nodeId);
       if (!node || node.type === 'container') return;
 
+      recordHistory();
       if (!node.childLayerId || !projectData.layers[node.childLayerId]) {
         const newLayerId = uid('layer');
         node.childLayerId = newLayerId;
@@ -1312,11 +1509,12 @@
           edges: []
         };
       }
-      switchLayer(node.childLayerId);
+      switchLayer(node.childLayerId, false);
     }
 
-    function switchLayer(layerId) {
+    function switchLayer(layerId, saveHist = true) {
       if (!projectData.layers[layerId]) return;
+      if (saveHist && projectData.currentLayerId !== layerId) recordHistory();
       projectData.currentLayerId = layerId;
       selectedNodeIds.clear();
       selectedEdgeId = null;
@@ -1375,7 +1573,7 @@
     }
 
     /**************************************************************
-     * 7. コピー＆ペースト
+     * 8. コピー＆ペースト・削除・キーボードショートカット (Undo/Redo対応)
      **************************************************************/
     function deepCloneLayer(sourceLayerId, newParentLayerId, newParentNodeId) {
       const orig = projectData.layers[sourceLayerId];
@@ -1440,6 +1638,7 @@
 
     function pasteSelection() {
       if (!clipboardData || clipboardData.nodes.length === 0) return;
+      recordHistory();
       const layer = currentLayer();
       const idMap = new Map();
       const newSelected = new Set();
@@ -1451,8 +1650,8 @@
         return {
           ...JSON.parse(JSON.stringify(n)),
           id: newId,
-          x: n.x + 32,
-          y: n.y + 32
+          x: n.x + GRID_SIZE,
+          y: n.y + GRID_SIZE
         };
       });
 
@@ -1485,11 +1684,13 @@
     function deleteSelection() {
       const layer = currentLayer();
       if (selectedNodeIds.size > 0) {
+        recordHistory();
         layer.nodes = layer.nodes.filter(n => !selectedNodeIds.has(n.id));
         layer.edges = layer.edges.filter(e => !selectedNodeIds.has(e.source) && !selectedNodeIds.has(e.target));
         selectedNodeIds.clear();
         render();
       } else if (selectedEdgeId) {
+        recordHistory();
         layer.edges = layer.edges.filter(e => e.id !== selectedEdgeId);
         selectedEdgeId = null;
         render();
@@ -1498,10 +1699,19 @@
 
     window.addEventListener('keydown', (ev) => {
       if (editingNodeId || ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) return;
-      if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'c') {
+
+      const key = ev.key.toLowerCase();
+      if ((ev.ctrlKey || ev.metaKey) && key === 'z') {
+        ev.preventDefault();
+        if (ev.shiftKey) performRedo();
+        else performUndo();
+      } else if ((ev.ctrlKey || ev.metaKey) && key === 'y') {
+        ev.preventDefault();
+        performRedo();
+      } else if ((ev.ctrlKey || ev.metaKey) && key === 'c') {
         ev.preventDefault();
         copySelection();
-      } else if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'v') {
+      } else if ((ev.ctrlKey || ev.metaKey) && key === 'v') {
         ev.preventDefault();
         pasteSelection();
       } else if (ev.key === 'Delete' || ev.key === 'Backspace') {
@@ -1511,7 +1721,7 @@
     });
 
     /**************************************************************
-     * 8. 右パネル＆リサイザー
+     * 9. 右パネル＆リサイザー
      **************************************************************/
     function updatePropertyPanel() {
       const emptyEl = document.getElementById('prop-empty');
@@ -1563,43 +1773,55 @@
       }
     }
 
+    document.getElementById('prop-text').addEventListener('change', (e) => {
+      applyToSelectedNodes(n => {
+        n.text = e.target.value;
+        if (n.childLayerId && projectData.layers[n.childLayerId]) {
+          projectData.layers[n.childLayerId].name = n.text || 'サブ階層';
+        }
+      }, true);
+    });
     document.getElementById('prop-text').addEventListener('input', (e) => {
       applyToSelectedNodes(n => {
         n.text = e.target.value;
         if (n.childLayerId && projectData.layers[n.childLayerId]) {
           projectData.layers[n.childLayerId].name = n.text || 'サブ階層';
         }
-      });
+      }, false);
     });
-    document.getElementById('prop-color').addEventListener('input', (e) => applyToSelectedNodes(n => n.color = e.target.value));
-    document.getElementById('prop-fontsize').addEventListener('input', (e) => applyToSelectedNodes(n => n.fontSize = parseInt(e.target.value, 10) || 14));
-    document.getElementById('prop-fontfamily').addEventListener('change', (e) => applyToSelectedNodes(n => n.fontFamily = e.target.value));
-    document.getElementById('prop-w').addEventListener('input', (e) => applyToSelectedNodes(n => n.width = Math.max(60, parseInt(e.target.value, 10) || 160)));
-    document.getElementById('prop-h').addEventListener('input', (e) => applyToSelectedNodes(n => n.height = Math.max(40, parseInt(e.target.value, 10) || 80)));
+    document.getElementById('prop-color').addEventListener('change', (e) => applyToSelectedNodes(n => n.color = e.target.value, true));
+    document.getElementById('prop-color').addEventListener('input', (e) => applyToSelectedNodes(n => n.color = e.target.value, false));
+    document.getElementById('prop-fontsize').addEventListener('change', (e) => applyToSelectedNodes(n => n.fontSize = parseInt(e.target.value, 10) || 14, true));
+    document.getElementById('prop-fontfamily').addEventListener('change', (e) => applyToSelectedNodes(n => n.fontFamily = e.target.value, true));
+    document.getElementById('prop-w').addEventListener('change', (e) => applyToSelectedNodes(n => n.width = Math.max(60, parseInt(e.target.value, 10) || 160), true));
+    document.getElementById('prop-h').addEventListener('change', (e) => applyToSelectedNodes(n => n.height = Math.max(40, parseInt(e.target.value, 10) || 80), true));
     document.getElementById('btn-enter-layer').addEventListener('click', () => {
       if (selectedNodeIds.size === 1) enterNodeLayer([...selectedNodeIds][0]);
     });
 
+    document.getElementById('prop-edge-label').addEventListener('change', () => recordHistory());
     document.getElementById('prop-edge-label').addEventListener('input', (e) => {
       const edge = currentLayer().edges.find(ed => ed.id === selectedEdgeId);
       if (edge) { edge.label = e.target.value; render(); }
     });
+    document.getElementById('prop-edge-color').addEventListener('change', () => recordHistory());
     document.getElementById('prop-edge-color').addEventListener('input', (e) => {
       const edge = currentLayer().edges.find(ed => ed.id === selectedEdgeId);
       if (edge) { edge.color = e.target.value; render(); }
     });
 
     function addNode(type) {
+      recordHistory();
       const layer = currentLayer();
       const isCont = type === 'container';
       const newNode = {
         id: uid(isCont ? 'cont' : 'node'),
         type,
         text: isCont ? '新規グループコンテナ' : '新規矩形ノード',
-        x: Math.round((-panX + 260) / zoom),
-        y: Math.round((-panY + 140) / zoom),
-        width: isCont ? 360 : 180,
-        height: isCont ? 240 : 80,
+        x: snapToGrid((-panX + 260) / zoom),
+        y: snapToGrid((-panY + 140) / zoom),
+        width: isCont ? 360 : 192,
+        height: isCont ? 240 : 84,
         color: isCont ? '#e2e8f0' : '#dbeafe',
         fontSize: 14,
         fontFamily: "'Segoe UI', 'Meiryo', sans-serif",
@@ -1615,6 +1837,8 @@
     document.getElementById('btn-side-rect').addEventListener('click', () => addNode('rect'));
     document.getElementById('btn-add-container').addEventListener('click', () => addNode('container'));
     document.getElementById('btn-side-container').addEventListener('click', () => addNode('container'));
+    document.getElementById('btn-undo').addEventListener('click', performUndo);
+    document.getElementById('btn-redo').addEventListener('click', performRedo);
     document.getElementById('btn-copy').addEventListener('click', copySelection);
     document.getElementById('btn-paste').addEventListener('click', pasteSelection);
     document.getElementById('btn-delete').addEventListener('click', deleteSelection);
@@ -1644,7 +1868,7 @@
       window.addEventListener('mousemove', (e) => {
         if (!dragging) return;
         const newW = isLeft ? e.clientX : (window.innerWidth - e.clientX);
-        panelEl.style.width = `${Math.max(160, Math.min(480, newW))}px`;
+        panelEl.style.width = `${Math.max(150, Math.min(460, newW))}px`;
       });
       window.addEventListener('mouseup', () => {
         if (dragging) {
@@ -1657,7 +1881,7 @@
     setupResizer(rightResizer, rightPanel, false);
 
     /**************************************************************
-     * 9. プロジェクト一覧モーダル ＆ URLルーティング連携
+     * 10. プロジェクト一覧モーダル ＆ URLルーティング連携
      **************************************************************/
     async function fetchProjectList() {
       const container = document.getElementById('project-list-container');
@@ -1707,8 +1931,8 @@
       try {
         const res = await fetch(`/api/projects/${encodeURIComponent(pid)}?project_id=${encodeURIComponent(pid)}`);
         if (res.status === 404) {
-          // まだFirestoreに未保存の新規プロジェクトとして初期化して開く
           projectData = createEmptyProject(pid);
+          clearHistory();
           updateProjectHeaderAndUrl(pid, pushHistory);
           projectModal.classList.remove('open');
           selectedNodeIds.clear();
@@ -1727,6 +1951,7 @@
         if (!projectData.currentLayerId || !projectData.layers[projectData.currentLayerId]) {
           projectData.currentLayerId = "root";
         }
+        clearHistory();
         updateProjectHeaderAndUrl(pid, pushHistory);
         projectModal.classList.remove('open');
         selectedNodeIds.clear();
@@ -1754,7 +1979,7 @@
           const errData = await res.json().catch(() => ({}));
           throw new Error(errData.detail || `HTTP ${res.status}`);
         }
-        showToast(`☁ Firebaseへ保存しました (URL: /p/${pid})`);
+        showToast(`☁ Firebaseへ保存しました (ID: ${pid})`);
       } catch (err) {
         console.error(err);
         showToast(`保存エラー: ${err.message}`);
@@ -1774,7 +1999,6 @@
       }
     }
 
-    // モーダル操作イベント
     document.getElementById('btn-open-modal').addEventListener('click', () => {
       projectModal.classList.add('open');
       fetchProjectList();
@@ -1790,29 +2014,33 @@
       if (!pid) return showToast('新しいプロジェクト名を入力してください');
 
       projectData = createEmptyProject(pid);
+      clearHistory();
       updateProjectHeaderAndUrl(pid, true);
       projectModal.classList.remove('open');
       input.value = '';
       render();
-      // 新規作成と同時にFirebaseへ初回保存
       await saveCurrentProject();
     });
 
     document.getElementById('btn-cloud-save').addEventListener('click', saveCurrentProject);
 
-    // 専用URLコピーボタン（ブラウザのショートカット作成用）
     document.getElementById('btn-copy-url').addEventListener('click', () => {
       navigator.clipboard.writeText(window.location.href).then(() => {
-        showToast('プロジェクト専用URLをコピーしました！ブックマークに登録できます');
+        showToast('プロジェクト専用URLをコピーしました！');
       });
     });
 
-    // ブラウザの「戻る / 進む」ボタン対応
-    window.addEventListener('popstate', () => {
-      handleInitialRoute(false);
+    // マウスの戻るボタンでブラウザのpopstateが発火した際もページ離脱を防ぎUndoを実行
+    window.addEventListener('popstate', (ev) => {
+      if (undoStack.length > 0) {
+        performUndo();
+        const targetPath = `/p/${encodeURIComponent(projectData.projectId)}`;
+        window.history.pushState({ projectId: projectData.projectId, guard: true }, '', targetPath);
+      } else {
+        handleInitialRoute(false);
+      }
     });
 
-    // 起動時のURL判定: /p/{プロジェクトID} なら自動ロード、ルート(/) なら一覧モーダルを表示
     function handleInitialRoute(pushHistory = false) {
       const path = window.location.pathname;
       const params = new URLSearchParams(window.location.search);
@@ -1820,7 +2048,7 @@
       if (path.startsWith('/p/')) {
         const pid = decodeURIComponent(path.slice(3));
         if (pid) {
-          openProjectById(pid, pushHistory);
+          openProjectById(pid, true);
           return;
         }
       } else if (params.get('p')) {
@@ -1828,7 +2056,6 @@
         return;
       }
 
-      // プロジェクト指定がない場合は起動時に一覧モーダルを表示
       render();
       projectModal.classList.add('open');
       fetchProjectList();
