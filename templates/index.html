@@ -11,8 +11,7 @@
   <!-- Header -->
   <header>
     <div class="header-left">
-      <button class="btn" id="btn-toggle-left" title="左パネルの表示切替">◀ 左パネル</button>
-      <span class="app-title">FlowHierarchy</span>
+      <button class="btn" id="btn-toggle-left" title="左パネルの表示切替">◀</button>
       <button class="btn" id="btn-open-modal" title="プロジェクト一覧を開く">📋 プロジェクト一覧</button>
 
       <!-- フローチャート / クラス図 モード切替タブ -->
@@ -23,8 +22,8 @@
     </div>
 
     <div class="header-center">
-      <button class="btn" id="btn-undo" title="元に戻す (Ctrl+Z / マウス戻るボタン)" disabled>↶ 戻す</button>
-      <button class="btn" id="btn-redo" title="やり直す (Ctrl+Y / マウス進むボタン)" disabled>↷ 進む</button>
+      <button class="btn" id="btn-undo" title="元に戻す (Ctrl+Z / マウス戻るボタン)" disabled>↶</button>
+      <button class="btn" id="btn-redo" title="やり直す (Ctrl+Y / マウス進むボタン)" disabled>↷</button>
       <button class="btn" id="btn-copy" title="Ctrl+C">コピー</button>
       <button class="btn" id="btn-paste" title="Ctrl+V">貼り付け</button>
       <button class="btn btn-danger" id="btn-delete" title="Delete">削除</button>
@@ -41,7 +40,7 @@
         <span class="save-spinner" id="save-spinner"></span>
         <span id="save-btn-text">☁ 保存 (Ctrl+S)</span>
       </button>
-      <button class="btn" id="btn-toggle-right" title="右パネルの表示切替">右パネル ▶</button>
+      <button class="btn" id="btn-toggle-right" title="右パネルの表示切替">▶</button>
     </div>
   </header>
 
@@ -73,10 +72,10 @@
 
       <!-- タグ管理（タグごとの色設定） -->
       <div class="panel-section">
-        <div class="panel-title">🏷️ タグ管理 (色設定)</div>
+        <div class="panel-title">🏷️ タグ管理 (塗りつぶし色設定)</div>
         <div style="display:flex; gap:5px; margin-bottom:8px;">
           <input type="text" id="new-tag-name" class="form-control" placeholder="新規タグ名" style="padding:4px 7px;">
-          <input type="color" id="new-tag-color" value="#3b82f6" style="width:32px; height:29px; border:none; background:none; cursor:pointer; flex-shrink:0;">
+          <input type="color" id="new-tag-color" value="#93c5fd" style="width:32px; height:29px; border:none; background:none; cursor:pointer; flex-shrink:0;">
           <button class="btn btn-primary" id="btn-create-tag" style="padding:4px 8px;">＋</button>
         </div>
         <div id="project-tag-list" class="tag-manage-list"></div>
@@ -140,7 +139,7 @@
           <button type="button" id="mt-align-center" data-align="center">中</button>
           <button type="button" id="mt-align-right" data-align="right">右</button>
         </div>
-        <input type="color" id="mt-color" title="背景色を変更">
+        <input type="color" id="mt-color" title="塗りつぶし色を変更（タグ未設定時のみ）">
         <button class="btn btn-memo" id="mt-add-child-memo" style="padding:3px 7px;" title="この要素に子メモを追加">＋📝</button>
         <button class="btn" id="mt-copy" style="padding:3px 7px;">複製</button>
         <button class="btn btn-danger" id="mt-del" style="padding:3px 7px;">削除</button>
@@ -159,7 +158,7 @@
         <div class="ctx-item" id="ctx-paste">📋 ここに貼り付け (Ctrl+V)</div>
       </div>
 
-      <!-- ダブルクリック時の「周辺オブジェクト選択ポップアップ」 (密集した矢印・矩形の選択用) -->
+      <!-- ダブルクリック時の「周辺オブジェクト選択ポップアップ」 -->
       <div id="nearby-picker">
         <div class="nearby-header">
           <span>🎯 周辺のオブジェクトを選択</span>
@@ -199,34 +198,52 @@
             <textarea id="prop-text" class="form-control" rows="2" placeholder="テキストを入力..."></textarea>
           </div>
 
-          <!-- クラスノード専用：メンバ変数 ＆ 関数(メソッド) 編集 -->
+          <!-- クラスノード専用：アクセス修飾子選択＋名前＋型の構造化入力 -->
           <div class="sub-box" id="prop-class-box" style="display:none;">
-            <label style="font-size:11px; color:#c4b5fd; font-weight:700; display:block; margin-bottom:6px;">
+            <label style="font-size:11px; color:#c4b5fd; font-weight:700; display:block; margin-bottom:8px;">
               🧩 クラス構造（変数・関数リスト）
             </label>
+
+            <!-- メンバ変数追加 -->
             <div class="form-group">
-              <label>メンバ変数 / フィールド</label>
-              <div style="display:flex; gap:4px; margin-bottom:6px;">
-                <input type="text" id="new-class-field" class="form-control" placeholder="例: + hp: int">
-                <button class="btn btn-primary" id="btn-add-class-field">追加</button>
+              <label>メンバ変数 / フィールド追加</label>
+              <div class="struct-input-row">
+                <select id="new-field-access" class="form-control struct-access" title="アクセス修飾子">
+                  <option value="public">+ public</option>
+                  <option value="private">- private</option>
+                  <option value="protected"># protected</option>
+                </select>
+                <input type="text" id="new-field-name" class="form-control" placeholder="変数名 (例: hp)">
+                <input type="text" id="new-field-type" class="form-control" placeholder="型 (例: int)">
+                <button class="btn btn-primary" id="btn-add-class-field" style="padding:5px 8px;">追加</button>
               </div>
               <div id="class-field-list" class="member-edit-list"></div>
             </div>
 
+            <!-- 関数 / メソッド追加 -->
             <div class="form-group" style="margin-bottom:0;">
-              <label>関数 / メソッド (リンク先として参照可能)</label>
+              <label>関数 / メソッド追加 (リンク参照可能)</label>
+              <div class="struct-input-row" style="margin-bottom:4px;">
+                <select id="new-method-access" class="form-control struct-access" title="アクセス修飾子">
+                  <option value="public">+ public</option>
+                  <option value="private">- private</option>
+                  <option value="protected"># protected</option>
+                </select>
+                <input type="text" id="new-method-name" class="form-control" placeholder="関数名 (例: Attack)">
+                <input type="text" id="new-method-type" class="form-control" placeholder="戻り値型 (例: void)">
+              </div>
               <div style="display:flex; gap:4px; margin-bottom:6px;">
-                <input type="text" id="new-class-method" class="form-control" placeholder="例: + Attack(power): void">
-                <button class="btn btn-purple" id="btn-add-class-method">追加</button>
+                <input type="text" id="new-method-args" class="form-control" placeholder="引数 (省略可 例: power: int)">
+                <button class="btn btn-purple" id="btn-add-class-method" style="padding:5px 10px;">追加</button>
               </div>
               <div id="class-method-list" class="member-edit-list"></div>
             </div>
           </div>
 
-          <!-- タグ付与セクション -->
+          <!-- タグ付与セクション（1つのみ選択可能・塗りつぶし色に連動） -->
           <div class="sub-box" id="prop-tags-box">
             <label style="font-size:11px; color:#93c5fd; font-weight:700; display:block; margin-bottom:6px;">
-              🏷️ タグ設定（クリックでON/OFF）
+              🏷️ タグ設定（1つのみ選択可・タグ色が塗りつぶし色になります）
             </label>
             <div id="node-tag-selector" class="node-tag-selector"></div>
           </div>
@@ -242,8 +259,11 @@
 
           <div class="row-2">
             <div class="form-group">
-              <label>塗りつぶし色</label>
+              <label id="prop-color-label">塗りつぶし色</label>
               <input type="color" id="prop-color" class="form-control" style="height:34px; padding:2px;">
+              <div id="prop-color-tag-hint" style="display:none; font-size:10px; color:#fde047; margin-top:3px;">
+                ※タグ設定中のためタグ色が適用されています
+              </div>
             </div>
             <div class="form-group">
               <label>文字サイズ (px)</label>
@@ -285,17 +305,26 @@
             </button>
           </div>
 
-          <!-- リンクボタン設定（他ノード・クラス・クラス内の関数へジャンプ） -->
+          <!-- リンクボタン設定（検索フィルター付き＋被リンク逆参照一覧） -->
           <div class="sub-box" id="prop-link-box">
             <label style="font-size:11px; color:#c4b5fd; font-weight:700; display:block; margin-bottom:6px;">
               🔗 参照リンク設定（要素・クラス・関数へ移動）
             </label>
+            <input type="text" id="prop-link-search" class="form-control" placeholder="🔍 リンク先を名前で検索..." style="margin-bottom:5px; padding:5px 8px;">
             <select id="prop-link-select" class="form-control" style="margin-bottom:6px;">
               <option value="">（リンクなし）</option>
             </select>
-            <button class="btn btn-purple" id="btn-prop-jump-link" style="width:100%; justify-content:center; display:none;">
+            <button class="btn btn-purple" id="btn-prop-jump-link" style="width:100%; justify-content:center; display:none; margin-bottom:8px;">
               🚀 リンク先へ今すぐジャンプ
             </button>
+
+            <!-- 逆参照（この要素を参照しているオブジェクト一覧） -->
+            <div id="prop-backlinks-section" style="border-top:1px solid #333842; padding-top:8px; margin-top:4px;">
+              <label style="font-size:11px; color:#93c5fd; font-weight:700; display:block; margin-bottom:5px;">
+                📥 この要素を参照している元オブジェクト
+              </label>
+              <div id="prop-backlinks-list" class="backlinks-list"></div>
+            </div>
           </div>
 
           <button class="btn btn-primary" id="btn-enter-layer" style="width:100%; justify-content:center; margin-top:4px;">

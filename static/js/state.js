@@ -1,19 +1,77 @@
 /**************************************************************
- * state.js : プロジェクトデータ・タグ・クラス図構造・履歴・座標計算
+ * state.js : プロジェクトデータ・単一タグ色連動・クラス構造化・逆参照検索
  **************************************************************/
 const GRID_SIZE = 24;
 const snapToGrid = (val) => Math.round(val / GRID_SIZE) * GRID_SIZE;
 const uid = (prefix) => `${prefix}_${Math.random().toString(36).substring(2, 9)}`;
 const CLASS_LAYER_ID = "class_diagram";
 
+const ACCESS_SYMBOLS = {
+  public: "+",
+  private: "-",
+  protected: "#"
+};
+
+function formatClassField(f) {
+  const sym = ACCESS_SYMBOLS[f.access] || "+";
+  const mName = (f.memberName || "").trim() || "field";
+  const mType = (f.dataType || "").trim();
+  return mType ? `${sym} ${mName}: ${mType}` : `${sym} ${mName}`;
+}
+
+function formatClassMethod(m) {
+  const sym = ACCESS_SYMBOLS[m.access] || "+";
+  const mName = (m.memberName || "").trim() || "Method";
+  const mArgs = (m.args || "").trim();
+  const mType = (m.returnType || "").trim();
+  return mType ? `${sym} ${mName}(${mArgs}): ${mType}` : `${sym} ${mName}(${mArgs})`;
+}
+
+// 既存の文字列データ（"+ hp: int" など）からも access / memberName / dataType を復元するマイグレーション関数
+function normalizeClassMember(item, isMethod = false) {
+  if (item.memberName !== undefined) {
+    item.name = isMethod ? formatClassMethod(item) : formatClassField(item);
+    return item;
+  }
+  const raw = (item.name || "").trim();
+  let access = "public";
+  let rest = raw;
+  if (rest.startsWith("+")) { access = "public"; rest = rest.slice(1).trim(); }
+  else if (rest.startsWith("-")) { access = "private"; rest = rest.slice(1).trim(); }
+  else if (rest.startsWith("#")) { access = "protected"; rest = rest.slice(1).trim(); }
+
+  if (isMethod) {
+    const match = rest.match(/^([^\(]+)\(([^\)]*)\)\s*(?::\s*(.*))?$/);
+    if (match) {
+      item.access = access;
+      item.memberName = match[1].trim();
+      item.args = match[2].trim();
+      item.returnType = (match[3] || "void").trim();
+    } else {
+      item.access = access;
+      item.memberName = rest || "Method";
+      item.args = "";
+      item.returnType = "void";
+    }
+    item.name = formatClassMethod(item);
+  } else {
+    const parts = rest.split(":");
+    item.access = access;
+    item.memberName = (parts[0] || "value").trim();
+    item.dataType = (parts.slice(1).join(":") || "int").trim();
+    item.name = formatClassField(item);
+  }
+  return item;
+}
+
 function createEmptyProject(projectId) {
   return {
     projectId: projectId,
     currentLayerId: "root",
     tags: [
-      { id: "tag_sys", name: "システム", color: "#3b82f6" },
-      { id: "tag_ui",  name: "UI/演出",  color: "#10b981" },
-      { id: "tag_imp", name: "重要仕様", color: "#ef4444" }
+      { id: "tag_sys", name: "システム", color: "#93c5fd" },
+      { id: "tag_ui",  name: "UI/演出",  color: "#86efac" },
+      { id: "tag_imp", name: "重要仕様", color: "#fca5a5" }
     ],
     layers: {
       "root": {
@@ -44,16 +102,16 @@ function createEmptyProject(projectId) {
             id: "cls_sample",
             type: "class",
             text: "GameManager",
-            x: 216, y: 120, width: 240, height: 168,
+            x: 216, y: 120, width: 252, height: 176,
             color: "#f3e8ff", fontSize: 13, fontFamily: "'Consolas', 'Meiryo', monospace",
             textAlign: "left", tags: [],
             fields: [
-              { id: "fld_1", name: "+ currentTurn: int" },
-              { id: "fld_2", name: "- isPaused: bool" }
+              normalizeClassMember({ id: "fld_1", access: "public", memberName: "currentTurn", dataType: "int" }, false),
+              normalizeClassMember({ id: "fld_2", access: "private", memberName: "isPaused", dataType: "bool" }, false)
             ],
             methods: [
-              { id: "mtd_1", name: "+ StartGame(): void" },
-              { id: "mtd_2", name: "+ NextTurn(): void" }
+              normalizeClassMember({ id: "mtd_1", access: "public", memberName: "StartGame", args: "", returnType: "void" }, true),
+              normalizeClassMember({ id: "mtd_2", access: "public", memberName: "NextTurn", args: "", returnType: "void" }, true)
             ],
             parentGroupId: null, childLayerId: null, locked: false, isParentProxy: false,
             linkTargetNodeId: null, linkTargetLayerId: null, linkTargetMethodId: null
@@ -67,13 +125,12 @@ function createEmptyProject(projectId) {
 
 let projectData = createEmptyProject("demo_project_01");
 
-// 既存保存データに tags や class_diagram が無い場合でも安全に補完する関数
 function ensureProjectStructure(data) {
   if (!data.tags) {
     data.tags = [
-      { id: "tag_sys", name: "システム", color: "#3b82f6" },
-      { id: "tag_ui",  name: "UI/演出",  color: "#10b981" },
-      { id: "tag_imp", name: "重要仕様", color: "#ef4444" }
+      { id: "tag_sys", name: "システム", color: "#93c5fd" },
+      { id: "tag_ui",  name: "UI/演出",  color: "#86efac" },
+      { id: "tag_imp", name: "重要仕様", color: "#fca5a5" }
     ];
   }
   if (!data.layers) data.layers = {};
@@ -91,12 +148,34 @@ function ensureProjectStructure(data) {
   Object.values(data.layers).forEach(layer => {
     (layer.nodes || []).forEach(n => {
       if (!Array.isArray(n.tags)) n.tags = [];
+      // タグは最大1つのみに正規化
+      if (n.tags.length > 1) n.tags = [n.tags[0]];
       if (n.type === 'class') {
         if (!Array.isArray(n.fields)) n.fields = [];
         if (!Array.isArray(n.methods)) n.methods = [];
+        n.fields.forEach(f => normalizeClassMember(f, false));
+        n.methods.forEach(m => normalizeClassMember(m, true));
       }
     });
   });
+}
+
+// ノードに設定されている単一タグオブジェクトを取得
+function getNodeActiveTag(node) {
+  if (!node || !Array.isArray(node.tags) || node.tags.length === 0) return null;
+  const tagId = node.tags[0];
+  return (projectData.tags || []).find(t => t.id === tagId) || null;
+}
+
+// 実際の塗りつぶし色を返す（タグが設定されていればタグの色、未設定なら自由設定色）
+function getEffectiveNodeColor(node) {
+  const activeTag = getNodeActiveTag(node);
+  if (activeTag) return activeTag.color;
+  if (node.color) return node.color;
+  if (node.type === 'container') return '#e2e8f0';
+  if (node.type === 'memo') return '#fef08a';
+  if (node.type === 'class') return '#f3e8ff';
+  return '#dbeafe';
 }
 
 function isNodeLocked(node) {
@@ -172,12 +251,12 @@ function updateUndoRedoButtons() {
 
 /* --- エディタ操作状態 & DOM参照 --- */
 let panX = 0, panY = 0, zoom = 1;
-let lastFlowLayerId = "root"; // クラス図からフローチャートへ戻る際の記憶用
+let lastFlowLayerId = "root";
 let selectedNodeIds = new Set();
 let selectedEdgeId = null;
 let hoveredNodeId = null;
 let highlightedNodeId = null;
-let highlightedMethodId = null; // クラス内の特定メソッド行ハイライト用
+let highlightedMethodId = null;
 let clipboardData = null;
 
 let mode = 'none';
@@ -259,7 +338,7 @@ function updateViewportTransform() {
   updateMiniToolbarPosition();
 }
 
-/* --- 幾何・アンカー・検索・距離計算ヘルパー --- */
+/* --- 幾何・アンカー・検索・逆参照ヘルパー --- */
 function getPortCoords(node, port) {
   switch (port) {
     case 'top': return { x: node.x + node.width / 2, y: node.y };
@@ -295,7 +374,6 @@ function computeCurvePath(x1, y1, x2, y2, p1, p2) {
   return `M ${x1} ${y1} C ${x1 + o1.dx} ${y1 + o1.dy}, ${x2 + o2.dx} ${y2 + o2.dy}, ${x2} ${y2}`;
 }
 
-// 点(px, py)から矢印（3次ベジェ曲線）までの最短距離を計算（周辺オブジェクト検索用）
 function distanceToEdgeCurve(layer, edge, px, py) {
   const src = layer.nodes.find(n => n.id === edge.source);
   const tgt = layer.nodes.find(n => n.id === edge.target);
@@ -327,7 +405,6 @@ function distanceToEdgeCurve(layer, edge, px, py) {
   return minD;
 }
 
-// 点(px, py)から矩形までの最短距離を計算
 function distanceToNodeRect(node, px, py) {
   const dx = Math.max(node.x - px, 0, px - (node.x + node.width));
   const dy = Math.max(node.y - py, 0, py - (node.y + node.height));
@@ -363,6 +440,24 @@ function findNodeAcrossProject(targetNodeId) {
     if (found) return { node: found, layer };
   }
   return null;
+}
+
+// 指定したノード（またはクラス内の関数）をリンク参照している全オブジェクトを検索する関数
+function findBacklinksToNode(targetNodeId) {
+  const backlinks = [];
+  if (!targetNodeId) return backlinks;
+  Object.values(projectData.layers).forEach(layer => {
+    (layer.nodes || []).forEach(n => {
+      if (n.linkTargetNodeId === targetNodeId) {
+        backlinks.push({
+          sourceNode: n,
+          sourceLayer: layer,
+          targetMethodId: n.linkTargetMethodId || null
+        });
+      }
+    });
+  });
+  return backlinks;
 }
 
 function ensureParentProxyNode(layer) {

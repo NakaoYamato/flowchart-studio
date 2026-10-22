@@ -1,8 +1,7 @@
 /**************************************************************
- * app.js : 操作イベント・周辺選択ポップアップ・タグ・クラス図・保存通信
+ * app.js : 単一タグ色制御・リンク検索＆被リンク一覧・クラス構造化入力
  **************************************************************/
 
-/* --- モード切替（フローチャート ⇔ クラス図） --- */
 document.getElementById('btn-mode-flow').addEventListener('click', () => {
   if (isClassMode()) {
     switchLayer(lastFlowLayerId || 'root');
@@ -15,7 +14,7 @@ document.getElementById('btn-mode-class').addEventListener('click', () => {
   }
 });
 
-/* --- タグ管理（タグ追加・色変更・削除） --- */
+/* --- タグ管理 --- */
 function renderProjectTagManager() {
   const container = document.getElementById('project-tag-list');
   container.innerHTML = '';
@@ -23,7 +22,7 @@ function renderProjectTagManager() {
     const row = document.createElement('div');
     row.className = 'tag-manage-item';
     row.innerHTML = `
-      <input type="color" value="${tag.color}" title="タグの色を変更">
+      <input type="color" value="${tag.color}" title="タグの色（塗りつぶし色）を変更">
       <span class="tag-manage-name">${tag.name}</span>
       <button class="btn btn-danger" style="padding:1px 5px; font-size:10px;" title="タグを削除">✕</button>
     `;
@@ -60,7 +59,7 @@ document.getElementById('btn-create-tag').addEventListener('click', () => {
   projectData.tags.push({
     id: uid('tag'),
     name,
-    color: colorInput.value || '#3b82f6'
+    color: colorInput.value || '#93c5fd'
   });
   nameInput.value = '';
   render();
@@ -72,8 +71,7 @@ function findNearbyObjects(worldX, worldY, radius = 90) {
   const layer = currentLayer();
   const results = [];
 
-  // 1. 矢印（エッジ）を優先的にリストアップ
-  layer.edges.forEach((e, idx) => {
+  layer.edges.forEach((e) => {
     const d = distanceToEdgeCurve(layer, e, worldX, worldY);
     if (d <= radius) {
       const src = layer.nodes.find(n => n.id === e.source);
@@ -89,7 +87,6 @@ function findNearbyObjects(worldX, worldY, radius = 90) {
     }
   });
 
-  // 2. 矩形・クラス・コンテナ・メモ
   layer.nodes.forEach(n => {
     const d = distanceToNodeRect(n, worldX, worldY);
     if (d <= radius) {
@@ -104,7 +101,6 @@ function findNearbyObjects(worldX, worldY, radius = 90) {
     }
   });
 
-  // 矢印を上位に出しつつ距離順でソート
   results.sort((a, b) => {
     if (a.kind !== b.kind) return a.kind === 'edge' ? -1 : 1;
     return a.dist - b.dist;
@@ -117,7 +113,6 @@ function openNearbyPicker(clientX, clientY, items, doubleClickedNode = null) {
   const listEl = document.getElementById('nearby-list');
   listEl.innerHTML = '';
 
-  // ノード上でダブルクリックされた場合は「文字編集する」選択肢も一番上に用意
   if (doubleClickedNode && !isNodeLocked(doubleClickedNode)) {
     const editRow = document.createElement('div');
     editRow.className = 'nearby-item';
@@ -196,7 +191,7 @@ function insertNodeBetweenEdge(edgeId) {
     fontSize: srcNode.fontSize || 14,
     fontFamily: srcNode.fontFamily || "'Segoe UI', 'Meiryo', sans-serif",
     textAlign: srcNode.textAlign || 'center',
-    tags: Array.isArray(srcNode.tags) ? [...srcNode.tags] : [],
+    tags: Array.isArray(srcNode.tags) && srcNode.tags.length > 0 ? [srcNode.tags[0]] : [],
     parentGroupId: srcNode.parentGroupId || null,
     childLayerId: null,
     locked: false,
@@ -282,7 +277,6 @@ svg.addEventListener('mousedown', (ev) => {
   }
 
   if (ev.button === 0) {
-    // キャンバス余白のダブルクリック検知 -> 周辺オブジェクト（短い矢印など）の選択ポップアップを表示
     const now = Date.now();
     const clickDist = Math.hypot(ev.clientX - lastCanvasClickPos.x, ev.clientY - lastCanvasClickPos.y);
     if ((now - lastCanvasClickTime) < 360 && clickDist < 16) {
@@ -435,8 +429,8 @@ function openContextMenuAt(clientX, clientY) {
 function spawnConnectedNode(sourceNode, sourcePort, dropX, dropY, isClickOnly = false) {
   const layer = currentLayer();
   const inClass = isClassMode();
-  const w = inClass ? 240 : (sourceNode.type === 'rect' ? sourceNode.width : 192);
-  const h = inClass ? 168 : (sourceNode.type === 'rect' ? sourceNode.height : 84);
+  const w = inClass ? 252 : (sourceNode.type === 'rect' ? sourceNode.width : 192);
+  const h = inClass ? 176 : (sourceNode.type === 'rect' ? sourceNode.height : 84);
   let pos;
 
   if (isClickOnly) {
@@ -461,7 +455,7 @@ function spawnConnectedNode(sourceNode, sourcePort, dropX, dropY, isClickOnly = 
     fontSize: sourceNode.fontSize || (inClass ? 13 : 14),
     fontFamily: sourceNode.fontFamily || (inClass ? "'Consolas', 'Meiryo', monospace" : "'Segoe UI', 'Meiryo', sans-serif"),
     textAlign: sourceNode.textAlign || (inClass ? 'left' : 'center'),
-    tags: Array.isArray(sourceNode.tags) ? [...sourceNode.tags] : [],
+    tags: Array.isArray(sourceNode.tags) && sourceNode.tags.length > 0 ? [sourceNode.tags[0]] : [],
     fields: inClass ? [] : undefined,
     methods: inClass ? [] : undefined,
     parentGroupId: null,
@@ -710,6 +704,7 @@ function updateMiniToolbarPosition() {
 
   const first = selectedNodes[0];
   const allLocked = selectedNodes.every(n => isNodeLocked(n));
+  const anyHasTag = selectedNodes.some(n => getNodeActiveTag(n) !== null);
   const lockBtn = document.getElementById('mt-lock');
   lockBtn.textContent = allLocked ? '🔒' : '🔓';
   lockBtn.className = allLocked ? 'btn btn-warning' : 'btn';
@@ -718,7 +713,12 @@ function updateMiniToolbarPosition() {
   document.getElementById('mt-font').value = first.fontFamily || "'Segoe UI', 'Meiryo', sans-serif";
   document.getElementById('mt-font-slider').value = first.fontSize || 14;
   document.getElementById('mt-font-val').textContent = `${first.fontSize || 14}px`;
-  document.getElementById('mt-color').value = first.color || (first.type === 'memo' ? '#fef08a' : '#dbeafe');
+
+  const mtColor = document.getElementById('mt-color');
+  mtColor.value = getEffectiveNodeColor(first);
+  // タグ設定済みの場合はミニツールバーのカラーピッカーも無効化
+  mtColor.disabled = allLocked || anyHasTag;
+  mtColor.title = anyHasTag ? 'タグの色が適用されています（タグ解除で自由変更可）' : '塗りつぶし色を変更';
 
   const curAlign = first.textAlign || (first.type === 'memo' ? 'left' : 'center');
   ['left', 'center', 'right'].forEach(a => {
@@ -753,8 +753,16 @@ document.getElementById('mt-font-slider').addEventListener('change', (e) => appl
 document.getElementById('mt-font-slider').addEventListener('input', (e) => applyToSelectedNodes(n => n.fontSize = parseInt(e.target.value, 10), false));
 document.getElementById('mt-font-dec').addEventListener('click', () => applyToSelectedNodes(n => n.fontSize = Math.max(8, (n.fontSize || 14) - 2)));
 document.getElementById('mt-font-inc').addEventListener('click', () => applyToSelectedNodes(n => n.fontSize = Math.min(72, (n.fontSize || 14) + 2)));
-document.getElementById('mt-color').addEventListener('change', (e) => applyToSelectedNodes(n => n.color = e.target.value));
-document.getElementById('mt-color').addEventListener('input', (e) => applyToSelectedNodes(n => n.color = e.target.value, false));
+document.getElementById('mt-color').addEventListener('change', (e) => {
+  applyToSelectedNodes(n => {
+    if (!getNodeActiveTag(n)) n.color = e.target.value;
+  }, true);
+});
+document.getElementById('mt-color').addEventListener('input', (e) => {
+  applyToSelectedNodes(n => {
+    if (!getNodeActiveTag(n)) n.color = e.target.value;
+  }, false);
+});
 document.getElementById('mt-add-child-memo').addEventListener('click', () => addChildMemoToCurrentSelection());
 document.getElementById('mt-copy').addEventListener('click', () => { copySelection(); pasteSelection(); });
 document.getElementById('mt-del').addEventListener('click', () => deleteSelection());
@@ -944,30 +952,40 @@ window.addEventListener('keydown', (ev) => {
   }
 });
 
-/* --- 右パネル＆プロパティ制御（タグ・クラス編集・関数リンク） --- */
+/* --- 右パネル：単一タグ選択（排他仕様・塗りつぶし色連動） --- */
 function populateNodeTagSelector(selectedNodes) {
   const container = document.getElementById('node-tag-selector');
   container.innerHTML = '';
   const allTags = projectData.tags || [];
-  if (allTags.length === 0) {
-    container.innerHTML = '<span style="font-size:11px; color:var(--text-sub);">左パネルからタグを作成してください</span>';
-    return;
-  }
+
+  // 「タグなし（自由色）」チップ
+  const noneSelected = selectedNodes.every(n => !Array.isArray(n.tags) || n.tags.length === 0);
+  const clearChip = document.createElement('span');
+  clearChip.className = 'tag-chip' + (noneSelected ? ' selected' : '');
+  clearChip.style.background = '#374151';
+  clearChip.style.color = '#e5e7eb';
+  clearChip.textContent = '🚫 タグなし (自由色)';
+  clearChip.addEventListener('click', () => {
+    applyToSelectedNodes(n => {
+      n.tags = [];
+    }, true);
+  });
+  container.appendChild(clearChip);
 
   allTags.forEach(tag => {
-    const hasTag = selectedNodes.every(n => Array.isArray(n.tags) && n.tags.includes(tag.id));
+    const hasTag = selectedNodes.every(n => Array.isArray(n.tags) && n.tags[0] === tag.id);
     const chip = document.createElement('span');
     chip.className = 'tag-chip' + (hasTag ? ' selected' : '');
     chip.style.background = tag.color || '#3b82f6';
-    chip.style.color = '#ffffff';
+    chip.style.color = '#111827';
     chip.textContent = tag.name;
     chip.addEventListener('click', () => {
       applyToSelectedNodes(n => {
-        if (!Array.isArray(n.tags)) n.tags = [];
-        if (hasTag) {
-          n.tags = n.tags.filter(id => id !== tag.id);
-        } else if (!n.tags.includes(tag.id)) {
-          n.tags.push(tag.id);
+        // 既に同じタグが付いていれば解除、違えばそのタグ1つのみをセット
+        if (Array.isArray(n.tags) && n.tags[0] === tag.id) {
+          n.tags = [];
+        } else {
+          n.tags = [tag.id];
         }
       }, true);
     });
@@ -975,6 +993,7 @@ function populateNodeTagSelector(selectedNodes) {
   });
 }
 
+/* --- 右パネル：クラス構造（public/private/protected選択＋名前＋型の分割編集） --- */
 function renderClassMembersEditor(classNode) {
   const fieldListEl = document.getElementById('class-field-list');
   const methodListEl = document.getElementById('class-method-list');
@@ -982,17 +1001,35 @@ function renderClassMembersEditor(classNode) {
   methodListEl.innerHTML = '';
 
   (classNode.fields || []).forEach(f => {
+    normalizeClassMember(f, false);
     const row = document.createElement('div');
     row.className = 'member-edit-row';
     row.innerHTML = `
-      <input type="text" value="${f.name}">
+      <select title="アクセス修飾子">
+        <option value="public" ${f.access === 'public' ? 'selected' : ''}>+ pub</option>
+        <option value="private" ${f.access === 'private' ? 'selected' : ''}>- priv</option>
+        <option value="protected" ${f.access === 'protected' ? 'selected' : ''}># prot</option>
+      </select>
+      <input type="text" class="m-name" value="${f.memberName || ''}" placeholder="変数名">
+      <input type="text" class="m-type" value="${f.dataType || ''}" placeholder="型">
       <button class="btn btn-danger" style="padding:2px 6px; font-size:10px;">✕</button>
     `;
-    row.querySelector('input').addEventListener('change', (ev) => {
+    const selEl = row.querySelector('select');
+    const nameEl = row.querySelector('.m-name');
+    const typeEl = row.querySelector('.m-type');
+
+    const updateField = () => {
       recordHistory();
-      f.name = ev.target.value;
+      f.access = selEl.value;
+      f.memberName = nameEl.value.trim();
+      f.dataType = typeEl.value.trim();
+      f.name = formatClassField(f);
       render();
-    });
+    };
+    selEl.addEventListener('change', updateField);
+    nameEl.addEventListener('change', updateField);
+    typeEl.addEventListener('change', updateField);
+
     row.querySelector('button').addEventListener('click', () => {
       recordHistory();
       classNode.fields = classNode.fields.filter(item => item.id !== f.id);
@@ -1002,17 +1039,39 @@ function renderClassMembersEditor(classNode) {
   });
 
   (classNode.methods || []).forEach(m => {
+    normalizeClassMember(m, true);
     const row = document.createElement('div');
     row.className = 'member-edit-row';
     row.innerHTML = `
-      <input type="text" value="${m.name}">
+      <select title="アクセス修飾子">
+        <option value="public" ${m.access === 'public' ? 'selected' : ''}>+ pub</option>
+        <option value="private" ${m.access === 'private' ? 'selected' : ''}>- priv</option>
+        <option value="protected" ${m.access === 'protected' ? 'selected' : ''}># prot</option>
+      </select>
+      <input type="text" class="m-name" value="${m.memberName || ''}" placeholder="関数名" title="関数名">
+      <input type="text" class="m-args" value="${m.args || ''}" placeholder="引数" title="引数">
+      <input type="text" class="m-type" value="${m.returnType || ''}" placeholder="戻り値型" title="戻り値型">
       <button class="btn btn-danger" style="padding:2px 6px; font-size:10px;">✕</button>
     `;
-    row.querySelector('input').addEventListener('change', (ev) => {
+    const selEl = row.querySelector('select');
+    const nameEl = row.querySelector('.m-name');
+    const argsEl = row.querySelector('.m-args');
+    const typeEl = row.querySelector('.m-type');
+
+    const updateMethod = () => {
       recordHistory();
-      m.name = ev.target.value;
+      m.access = selEl.value;
+      m.memberName = nameEl.value.trim();
+      m.args = argsEl.value.trim();
+      m.returnType = typeEl.value.trim();
+      m.name = formatClassMethod(m);
       render();
-    });
+    };
+    selEl.addEventListener('change', updateMethod);
+    nameEl.addEventListener('change', updateMethod);
+    argsEl.addEventListener('change', updateMethod);
+    typeEl.addEventListener('change', updateMethod);
+
     row.querySelector('button').addEventListener('click', () => {
       recordHistory();
       classNode.methods = classNode.methods.filter(item => item.id !== m.id);
@@ -1023,29 +1082,55 @@ function renderClassMembersEditor(classNode) {
 }
 
 document.getElementById('btn-add-class-field').addEventListener('click', () => {
-  const input = document.getElementById('new-class-field');
-  const val = input.value.trim();
-  if (!val) return;
+  const accessEl = document.getElementById('new-field-access');
+  const nameEl = document.getElementById('new-field-name');
+  const typeEl = document.getElementById('new-field-type');
+  const mName = nameEl.value.trim();
+  const mType = typeEl.value.trim() || 'int';
+  if (!mName) return showToast('メンバ変数名を入力してください');
+
   applyToSelectedNodes(n => {
     if (n.type === 'class') {
       if (!Array.isArray(n.fields)) n.fields = [];
-      n.fields.push({ id: uid('fld'), name: val });
+      const newField = normalizeClassMember({
+        id: uid('fld'),
+        access: accessEl.value,
+        memberName: mName,
+        dataType: mType
+      }, false);
+      n.fields.push(newField);
     }
   }, true);
-  input.value = '';
+  nameEl.value = '';
+  typeEl.value = '';
 });
 
 document.getElementById('btn-add-class-method').addEventListener('click', () => {
-  const input = document.getElementById('new-class-method');
-  const val = input.value.trim();
-  if (!val) return;
+  const accessEl = document.getElementById('new-method-access');
+  const nameEl = document.getElementById('new-method-name');
+  const typeEl = document.getElementById('new-method-type');
+  const argsEl = document.getElementById('new-method-args');
+  const mName = nameEl.value.trim();
+  const mType = typeEl.value.trim() || 'void';
+  const mArgs = argsEl.value.trim();
+  if (!mName) return showToast('関数名を入力してください');
+
   applyToSelectedNodes(n => {
     if (n.type === 'class') {
       if (!Array.isArray(n.methods)) n.methods = [];
-      n.methods.push({ id: uid('mtd'), name: val });
+      const newMethod = normalizeClassMember({
+        id: uid('mtd'),
+        access: accessEl.value,
+        memberName: mName,
+        args: mArgs,
+        returnType: mType
+      }, true);
+      n.methods.push(newMethod);
     }
   }, true);
-  input.value = '';
+  nameEl.value = '';
+  typeEl.value = '';
+  argsEl.value = '';
 });
 
 function populateMemoParentOptions(memoNode) {
@@ -1075,40 +1160,55 @@ function populateMemoParentOptions(memoNode) {
   });
 }
 
-// 参照リンク選択プルダウン（フローチャート要素 ＋ クラス本体 ＋ クラス内の各関数）
+/* --- 右パネル：リンク選択（検索フィルター対応） ＆ 被リンク（逆参照）一覧 --- */
 function populateLinkTargetOptions(currentNode) {
   const select = document.getElementById('prop-link-select');
+  const searchInput = document.getElementById('prop-link-search');
+  const query = (searchInput.value || '').trim().toLowerCase();
+
   select.innerHTML = '<option value="">（リンクなし）</option>';
 
   const curVal = currentNode.linkTargetNodeId
     ? (currentNode.linkTargetMethodId ? `${currentNode.linkTargetNodeId}::${currentNode.linkTargetMethodId}` : currentNode.linkTargetNodeId)
     : '';
 
-  // 1. クラス図のクラス＆関数（メソッド）を優先グループとして追加
+  const matchesFilter = (text, val) => {
+    if (val === curVal) return true; // 現在選択中の項目は常に残す
+    if (!query) return true;
+    return text.toLowerCase().includes(query);
+  };
+
+  // 1. クラス図のクラス＆関数
   const clsLayer = projectData.layers[CLASS_LAYER_ID];
   if (clsLayer && clsLayer.nodes.length > 0) {
     const grpClass = document.createElement('optgroup');
     grpClass.label = '🧩 クラス図 (クラス ＆ 関数)';
     clsLayer.nodes.forEach(cn => {
       if (cn.id === currentNode.id) return;
-      const optCls = document.createElement('option');
-      optCls.value = cn.id;
-      optCls.textContent = `🧩 クラス: ${cn.text || cn.id}`;
-      if (curVal === cn.id) optCls.selected = true;
-      grpClass.appendChild(optCls);
+      const clsLabel = `🧩 クラス: ${cn.text || cn.id}`;
+      if (matchesFilter(clsLabel, cn.id)) {
+        const optCls = document.createElement('option');
+        optCls.value = cn.id;
+        optCls.textContent = clsLabel;
+        if (curVal === cn.id) optCls.selected = true;
+        grpClass.appendChild(optCls);
+      }
 
       if (Array.isArray(cn.methods)) {
         cn.methods.forEach(m => {
-          const optM = document.createElement('option');
           const val = `${cn.id}::${m.id}`;
-          optM.value = val;
-          optM.textContent = ` ⚡ 関数: ${cn.text || cn.id} :: ${m.name}`;
-          if (curVal === val) optM.selected = true;
-          grpClass.appendChild(optM);
+          const mLabel = ` ⚡ 関数: ${cn.text || cn.id} :: ${formatClassMethod(m)}`;
+          if (matchesFilter(mLabel, val)) {
+            const optM = document.createElement('option');
+            optM.value = val;
+            optM.textContent = mLabel;
+            if (curVal === val) optM.selected = true;
+            grpClass.appendChild(optM);
+          }
         });
       }
     });
-    select.appendChild(grpClass);
+    if (grpClass.children.length > 0) select.appendChild(grpClass);
   }
 
   // 2. フローチャート各階層のノード
@@ -1118,20 +1218,64 @@ function populateLinkTargetOptions(currentNode) {
     if (layer.isClassDiagram) return;
     layer.nodes.forEach(n => {
       if (n.id === currentNode.id || n.isParentProxy) return;
-      const opt = document.createElement('option');
-      opt.value = n.id;
       const typeIcon = n.type === 'container' ? '📦' : (n.type === 'memo' ? '📝' : '🟦');
       const name = n.text ? n.text.slice(0, 18) : `(無題:${n.id})`;
-      opt.textContent = `[${layer.name || '階層'}] ${typeIcon} ${name}`;
-      if (curVal === n.id) opt.selected = true;
-      grpFlow.appendChild(opt);
+      const itemLabel = `[${layer.name || '階層'}] ${typeIcon} ${name}`;
+      if (matchesFilter(itemLabel, n.id)) {
+        const opt = document.createElement('option');
+        opt.value = n.id;
+        opt.textContent = itemLabel;
+        if (curVal === n.id) opt.selected = true;
+        grpFlow.appendChild(opt);
+      }
     });
   });
-  select.appendChild(grpFlow);
+  if (grpFlow.children.length > 0) select.appendChild(grpFlow);
 
   const jumpBtn = document.getElementById('btn-prop-jump-link');
   jumpBtn.style.display = currentNode.linkTargetNodeId ? 'inline-flex' : 'none';
+
+  // 3. この要素を参照している元オブジェクト一覧（被リンク）を表示
+  renderBacklinksList(currentNode);
 }
+
+function renderBacklinksList(currentNode) {
+  const listEl = document.getElementById('prop-backlinks-list');
+  listEl.innerHTML = '';
+  const backlinks = findBacklinksToNode(currentNode.id);
+
+  if (backlinks.length === 0) {
+    listEl.innerHTML = '<div style="font-size:11px; color:var(--text-sub);">この要素を参照しているリンクはありません</div>';
+    return;
+  }
+
+  backlinks.forEach(b => {
+    const item = document.createElement('div');
+    item.className = 'backlink-item';
+    const srcName = b.sourceNode.text ? b.sourceNode.text.slice(0, 14) : `(無題:${b.sourceNode.id})`;
+    const layerName = b.sourceLayer.name || '階層';
+    let methodNote = '';
+    if (b.targetMethodId && Array.isArray(currentNode.methods)) {
+      const m = currentNode.methods.find(x => x.id === b.targetMethodId);
+      if (m) methodNote = ` ➔ ⚡${m.memberName || m.name}()`;
+    }
+    item.innerHTML = `
+      <span>📍 [${layerName}] ${srcName}${methodNote}</span>
+      <span style="color:#c4b5fd; font-weight:700;">移動 ↗</span>
+    `;
+    item.addEventListener('click', () => {
+      jumpToLinkedNode(b.sourceNode.id);
+    });
+    listEl.appendChild(item);
+  });
+}
+
+// リンク検索欄の入力時にプルダウンを即時フィルタリング
+document.getElementById('prop-link-search').addEventListener('input', () => {
+  const layer = currentLayer();
+  const node = layer.nodes.find(n => selectedNodeIds.has(n.id));
+  if (node) populateLinkTargetOptions(node);
+});
 
 function updatePropertyPanel() {
   const emptyEl = document.getElementById('prop-empty');
@@ -1152,6 +1296,7 @@ function updatePropertyPanel() {
     const lockBtn = document.getElementById('prop-lock-btn');
     const locked = selectedNodes.every(n => isNodeLocked(n));
     const isProxy = selectedNodes.some(n => n.isParentProxy);
+    const anyHasTag = selectedNodes.some(n => getNodeActiveTag(n) !== null);
 
     proxyNotice.style.display = isProxy ? 'block' : 'none';
     lockBtn.style.display = isProxy ? 'none' : 'inline-flex';
@@ -1199,11 +1344,17 @@ function updatePropertyPanel() {
       if (!first.isParentProxy) populateLinkTargetOptions(first);
     }
 
-    ['prop-text', 'prop-color', 'prop-fontsize', 'prop-fontfamily', 'prop-w', 'prop-h'].forEach(id => {
+    ['prop-text', 'prop-fontsize', 'prop-fontfamily', 'prop-w', 'prop-h'].forEach(id => {
       document.getElementById(id).disabled = locked;
     });
 
-    document.getElementById('prop-color').value = first.color || (first.type === 'memo' ? '#fef08a' : '#dbeafe');
+    // タグが設定されている場合はカラーピッカーをロックし、タグ未設定時のみ自由変更可能にする
+    const colorInput = document.getElementById('prop-color');
+    const colorHint = document.getElementById('prop-color-tag-hint');
+    colorInput.value = getEffectiveNodeColor(first);
+    colorInput.disabled = locked || anyHasTag;
+    colorHint.style.display = anyHasTag ? 'block' : 'none';
+
     document.getElementById('prop-fontsize').value = first.fontSize || 14;
     document.getElementById('prop-fontfamily').value = first.fontFamily || "'Segoe UI', 'Meiryo', sans-serif";
   } else if (selectedEdgeId) {
@@ -1238,8 +1389,16 @@ document.getElementById('prop-text').addEventListener('input', (e) => {
     }
   }, false);
 });
-document.getElementById('prop-color').addEventListener('change', (e) => applyToSelectedNodes(n => n.color = e.target.value, true));
-document.getElementById('prop-color').addEventListener('input', (e) => applyToSelectedNodes(n => n.color = e.target.value, false));
+document.getElementById('prop-color').addEventListener('change', (e) => {
+  applyToSelectedNodes(n => {
+    if (!getNodeActiveTag(n)) n.color = e.target.value;
+  }, true);
+});
+document.getElementById('prop-color').addEventListener('input', (e) => {
+  applyToSelectedNodes(n => {
+    if (!getNodeActiveTag(n)) n.color = e.target.value;
+  }, false);
+});
 document.getElementById('prop-fontsize').addEventListener('change', (e) => applyToSelectedNodes(n => n.fontSize = parseInt(e.target.value, 10) || 14, true));
 document.getElementById('prop-fontfamily').addEventListener('change', (e) => applyToSelectedNodes(n => n.fontFamily = e.target.value, true));
 document.getElementById('prop-w').addEventListener('change', (e) => applyToSelectedNodes(n => n.width = Math.max(60, parseInt(e.target.value, 10) || 160), true));
@@ -1343,15 +1502,15 @@ function addNode(type, customWorldPos = null, parentSpec = null) {
     text: isCont ? '新規グループコンテナ' : (isMemo ? '仕様メモ' : (isClass ? 'NewClass' : '')),
     x: baseX,
     y: baseY,
-    width: isCont ? 360 : (isClass ? 240 : 192),
-    height: isCont ? 240 : (isClass ? 168 : (isMemo ? 108 : 84)),
+    width: isCont ? 360 : (isClass ? 252 : 192),
+    height: isCont ? 240 : (isClass ? 176 : (isMemo ? 108 : 84)),
     color: isCont ? '#e2e8f0' : (isMemo ? '#fef08a' : (isClass ? '#f3e8ff' : '#dbeafe')),
     fontSize: isClass ? 13 : 14,
     fontFamily: isClass ? "'Consolas', 'Meiryo', monospace" : "'Segoe UI', 'Meiryo', sans-serif",
     textAlign: (isMemo || isCont || isClass) ? 'left' : 'center',
     tags: [],
-    fields: isClass ? [{ id: uid('fld'), name: '+ value: int' }] : undefined,
-    methods: isClass ? [{ id: uid('mtd'), name: '+ Execute(): void' }] : undefined,
+    fields: isClass ? [normalizeClassMember({ id: uid('fld'), access: 'public', memberName: 'value', dataType: 'int' }, false)] : undefined,
+    methods: isClass ? [normalizeClassMember({ id: uid('mtd'), access: 'public', memberName: 'Execute', args: '', returnType: 'void' }, true)] : undefined,
     parentGroupId: null,
     childLayerId: null,
     locked: false,
@@ -1471,7 +1630,7 @@ function setupResizer(resizerEl, panelEl, isLeft) {
   window.addEventListener('mousemove', (e) => {
     if (!dragging) return;
     const newW = isLeft ? e.clientX : (window.innerWidth - e.clientX);
-    panelEl.style.width = `${Math.max(160, Math.min(480, newW))}px`;
+    panelEl.style.width = `${Math.max(160, Math.min(500, newW))}px`;
   });
   window.addEventListener('mouseup', () => {
     if (dragging) {
@@ -1483,7 +1642,7 @@ function setupResizer(resizerEl, panelEl, isLeft) {
 setupResizer(leftResizer, leftPanel, true);
 setupResizer(rightResizer, rightPanel, false);
 
-/* --- Firebase プロジェクト一覧・保存（保存中UI表示対応）・読込 --- */
+/* --- Firebase プロジェクト一覧・保存・読込 --- */
 async function fetchProjectList() {
   const container = document.getElementById('project-list-container');
   container.innerHTML = '<div style="color:var(--text-sub); font-size:12px; padding:12px;">Firebaseから一覧を取得中...</div>';

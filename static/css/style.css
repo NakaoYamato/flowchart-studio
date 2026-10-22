@@ -43,14 +43,6 @@ header::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 2px; }
   gap: 6px;
   flex-shrink: 0;
 }
-.app-title {
-  font-weight: 700;
-  font-size: 15px;
-  color: #60a5fa;
-  margin-right: 2px;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
 .mode-switch-group {
   display: inline-flex;
   background: #181a1f;
@@ -211,7 +203,7 @@ header::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 2px; }
   flex-shrink: 0;
 }
 #left-panel { width: 240px; min-width: 160px; max-width: 450px; border-right: 1px solid var(--border-color); }
-#right-panel { width: 290px; min-width: 190px; max-width: 520px; border-left: 1px solid var(--border-color); }
+#right-panel { width: 310px; min-width: 210px; max-width: 540px; border-left: 1px solid var(--border-color); }
 .side-panel.hidden { display: none !important; }
 
 .resizer {
@@ -292,28 +284,88 @@ header::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 2px; }
   box-shadow: 0 2px 6px rgba(0,0,0,0.4);
 }
 
-/* クラスメンバ編集リスト */
+/* クラスメンバ構造化入力＆編集リスト */
+.struct-input-row {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 6px;
+  align-items: center;
+}
+.struct-access {
+  width: 82px !important;
+  flex-shrink: 0;
+  padding: 5px 4px !important;
+  font-family: 'Consolas', monospace;
+  font-size: 11px !important;
+}
 .member-edit-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  max-height: 140px;
+  gap: 5px;
+  max-height: 170px;
   overflow-y: auto;
 }
 .member-edit-row {
   display: flex;
   align-items: center;
-  gap: 4px;
-}
-.member-edit-row input {
-  flex: 1;
+  gap: 3px;
   background: #21252b;
+  padding: 4px;
+  border-radius: 5px;
+  border: 1px solid #333842;
+}
+.member-edit-row select,
+.member-edit-row input {
+  background: #181a1f;
   border: 1px solid #3e4451;
   color: #fff;
-  padding: 4px 6px;
+  padding: 3px 5px;
   border-radius: 4px;
   font-size: 11px;
   font-family: 'Consolas', monospace;
+}
+.member-edit-row select {
+  width: 68px;
+  flex-shrink: 0;
+}
+.member-edit-row input.m-name {
+  flex: 1.2;
+  min-width: 50px;
+}
+.member-edit-row input.m-args {
+  flex: 1;
+  min-width: 45px;
+}
+.member-edit-row input.m-type {
+  flex: 0.9;
+  min-width: 42px;
+}
+
+/* 逆参照（被リンク）リスト */
+.backlinks-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 120px;
+  overflow-y: auto;
+}
+.backlink-item {
+  background: #21252b;
+  border: 1px solid #3e4451;
+  border-radius: 5px;
+  padding: 5px 8px;
+  font-size: 11px;
+  color: #e5e7eb;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  transition: 0.15s;
+}
+.backlink-item:hover {
+  border-color: #8b5cf6;
+  background: rgba(139, 92, 246, 0.2);
 }
 
 /* Layer Tree */
@@ -386,6 +438,10 @@ header::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 2px; }
   padding: 3px 5px;
   font-size: 12px;
   cursor: pointer;
+}
+#mini-toolbar input[type="color"]:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
 }
 #mini-toolbar input[type="range"] { width: 60px; cursor: pointer; }
 .align-group {
@@ -513,7 +569,7 @@ header::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 2px; }
   font-size: 12px;
   user-select: text;
 }
-.form-control:disabled { opacity: 0.5; cursor: not-allowed; }
+.form-control:disabled { opacity: 0.45; cursor: not-allowed; }
 .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .sub-box {
   background: #181a1f;

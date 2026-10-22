@@ -1,5 +1,5 @@
 /**************************************************************
- * renderer.js : SVG描画エンジン（タグ・クラス図・ロック非干渉対応）
+ * renderer.js : SVG描画エンジン（タグ色塗りつぶし連動・クラス図・ロック非干渉）
  **************************************************************/
 function render() {
   ensureProjectStructure(projectData);
@@ -9,7 +9,6 @@ function render() {
   ensureParentProxyNode(layer);
   updateModeUI();
 
-  // 矢印（edge）を親に持つ子メモの座標追従
   layer.nodes.forEach(n => {
     if (n.type === 'memo' && n.parentObjectType === 'edge' && n.parentObjectId) {
       if (!(mode === 'dragNodes' && selectedNodeIds.has(n.id))) {
@@ -80,8 +79,8 @@ function render() {
       uiLayer.appendChild(line);
 
       if (mode === 'quickCreate') {
-        const defaultW = isClassMode() ? 240 : 192;
-        const defaultH = isClassMode() ? 168 : 84;
+        const defaultW = isClassMode() ? 252 : 192;
+        const defaultH = isClassMode() ? 176 : 84;
         const ghostPos = computeNewNodePosFromCursor(activeConnect.currentX, activeConnect.currentY, activeConnect.sourcePort, defaultW, defaultH);
         const ghost = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
         ghost.setAttribute('x', ghostPos.x);
@@ -166,6 +165,8 @@ function createNodeSVG(node) {
   const isContainer = node.type === 'container';
   const isMemo = node.type === 'memo';
   const isClass = node.type === 'class';
+  const fillColor = getEffectiveNodeColor(node);
+  const activeTag = getNodeActiveTag(node);
 
   const hoverPad = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
   hoverPad.setAttribute('x', -52);
@@ -175,47 +176,41 @@ function createNodeSVG(node) {
   hoverPad.setAttribute('fill', 'transparent');
   g.appendChild(hoverPad);
 
-  // 1. タグピル（要素の上部に色付きタグを並べて表示）
-  if (Array.isArray(node.tags) && node.tags.length > 0) {
-    let tagOffsetX = 0;
-    node.tags.forEach(tagId => {
-      const tagObj = (projectData.tags || []).find(t => t.id === tagId);
-      if (!tagObj) return;
-      const pillW = Math.max(44, tagObj.name.length * 11 + 16);
-      const pillG = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-      pillG.setAttribute('transform', `translate(${tagOffsetX}, -22)`);
+  // 1. 単一タグピル表示（上部にタグ名を表示）
+  if (activeTag) {
+    const pillW = Math.max(48, activeTag.name.length * 11 + 18);
+    const pillG = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    pillG.setAttribute('transform', `translate(0, -22)`);
 
-      const pillBg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-      pillBg.setAttribute('width', pillW);
-      pillBg.setAttribute('height', 18);
-      pillBg.setAttribute('rx', 9);
-      pillBg.setAttribute('fill', tagObj.color || '#3b82f6');
-      pillBg.setAttribute('stroke', '#ffffff');
-      pillBg.setAttribute('stroke-width', '1');
-      pillG.appendChild(pillBg);
+    const pillBg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    pillBg.setAttribute('width', pillW);
+    pillBg.setAttribute('height', 18);
+    pillBg.setAttribute('rx', 9);
+    pillBg.setAttribute('fill', activeTag.color || '#3b82f6');
+    pillBg.setAttribute('stroke', '#1e293b');
+    pillBg.setAttribute('stroke-width', '1.2');
+    pillG.appendChild(pillBg);
 
-      const pillTxt = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      pillTxt.setAttribute('x', pillW / 2);
-      pillTxt.setAttribute('y', 12.5);
-      pillTxt.setAttribute('text-anchor', 'middle');
-      pillTxt.setAttribute('fill', '#ffffff');
-      pillTxt.setAttribute('font-size', '10px');
-      pillTxt.setAttribute('font-weight', 'bold');
-      pillTxt.textContent = tagObj.name;
-      pillG.appendChild(pillTxt);
+    const pillTxt = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    pillTxt.setAttribute('x', pillW / 2);
+    pillTxt.setAttribute('y', 12.5);
+    pillTxt.setAttribute('text-anchor', 'middle');
+    pillTxt.setAttribute('fill', '#111827');
+    pillTxt.setAttribute('font-size', '10px');
+    pillTxt.setAttribute('font-weight', 'bold');
+    pillTxt.textContent = `🏷️ ${activeTag.name}`;
+    pillG.appendChild(pillTxt);
 
-      g.appendChild(pillG);
-      tagOffsetX += pillW + 5;
-    });
+    g.appendChild(pillG);
   }
 
-  // 2. 本体描画
+  // 2. 本体描画（塗りつぶし色は getEffectiveNodeColor(node) を使用）
   if (isMemo) {
     const fold = 16;
     const w = node.width, h = node.height;
     const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
     poly.setAttribute('points', `0,0 ${w - fold},0 ${w},${fold} ${w},${h} 0,${h}`);
-    poly.setAttribute('fill', node.color || '#fef08a');
+    poly.setAttribute('fill', fillColor);
     poly.setAttribute('stroke', isSelected ? '#3b82f6' : (locked ? '#f59e0b' : '#ca8a04'));
     poly.setAttribute('stroke-width', isSelected ? '3' : '1.6');
     g.appendChild(poly);
@@ -228,7 +223,6 @@ function createNodeSVG(node) {
     g.appendChild(corner);
 
     const memoTag = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-    // ロック時に左上の🔒バッジと重ならないようX座標をオフセット
     memoTag.setAttribute('x', locked ? 34 : 8);
     memoTag.setAttribute('y', 14);
     memoTag.setAttribute('fill', '#854d0e');
@@ -237,12 +231,11 @@ function createNodeSVG(node) {
     memoTag.textContent = node.parentObjectId ? '📎 子メモ (仕様)' : '📝 メモ';
     g.appendChild(memoTag);
   } else if (isClass) {
-    // UML クラス図ノード描画
     const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
     rect.setAttribute('width', node.width);
     rect.setAttribute('height', node.height);
     rect.setAttribute('rx', 6);
-    rect.setAttribute('fill', node.color || '#f3e8ff');
+    rect.setAttribute('fill', fillColor);
     rect.setAttribute('stroke', isSelected ? '#3b82f6' : (locked ? '#f59e0b' : '#6d28d9'));
     rect.setAttribute('stroke-width', isSelected ? '3' : '2');
     g.appendChild(rect);
@@ -270,7 +263,6 @@ function createNodeSVG(node) {
     wrapper.style.fontSize = `${node.fontSize || 13}px`;
     wrapper.style.color = '#1e293b';
 
-    // クラス名ヘッダー（ロック時は左の🔒アイコンを避ける）
     const titleDiv = document.createElement('div');
     titleDiv.style.height = '32px';
     titleDiv.style.display = 'flex';
@@ -283,14 +275,13 @@ function createNodeSVG(node) {
     titleDiv.textContent = editingNodeId === node.id ? '' : `🧩 ${node.text || 'ClassName'}`;
     wrapper.appendChild(titleDiv);
 
-    // メンバ変数領域
     const fieldsDiv = document.createElement('div');
     fieldsDiv.style.padding = '6px 10px';
     fieldsDiv.style.borderBottom = '1.5px solid #a78bfa';
     fieldsDiv.style.minHeight = '28px';
     if (!node.fields || node.fields.length === 0) {
       const emptyF = document.createElement('div');
-      emptyF.style.color = '#94a3b8';
+      emptyF.style.color = '#64748b';
       emptyF.style.fontSize = '11px';
       emptyF.textContent = '(変数なし)';
       fieldsDiv.appendChild(emptyF);
@@ -301,19 +292,18 @@ function createNodeSVG(node) {
         row.style.whiteSpace = 'nowrap';
         row.style.overflow = 'hidden';
         row.style.textOverflow = 'ellipsis';
-        row.textContent = f.name;
+        row.textContent = formatClassField(f);
         fieldsDiv.appendChild(row);
       });
     }
     wrapper.appendChild(fieldsDiv);
 
-    // 関数（メソッド）領域（リンクジャンプ時は該当メソッド行を発光ハイライト）
     const methodsDiv = document.createElement('div');
     methodsDiv.style.padding = '6px 10px';
     methodsDiv.style.flex = '1';
     if (!node.methods || node.methods.length === 0) {
       const emptyM = document.createElement('div');
-      emptyM.style.color = '#94a3b8';
+      emptyM.style.color = '#64748b';
       emptyM.style.fontSize = '11px';
       emptyM.textContent = '(関数なし)';
       methodsDiv.appendChild(emptyM);
@@ -327,7 +317,7 @@ function createNodeSVG(node) {
         if (highlightedMethodId === m.id) {
           row.className = 'method-highlight';
         }
-        row.textContent = `⚡ ${m.name}`;
+        row.textContent = `⚡ ${formatClassMethod(m)}`;
         methodsDiv.appendChild(row);
       });
     }
@@ -336,12 +326,11 @@ function createNodeSVG(node) {
     fo.appendChild(wrapper);
     g.appendChild(fo);
   } else {
-    // 矩形・コンテナ
     const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
     rect.setAttribute('width', node.width);
     rect.setAttribute('height', node.height);
     rect.setAttribute('rx', isContainer ? 10 : 7);
-    rect.setAttribute('fill', node.color || (isContainer ? '#e2e8f0' : '#dbeafe'));
+    rect.setAttribute('fill', fillColor);
     rect.setAttribute('fill-opacity', isContainer ? '0.45' : '1');
 
     if (node.isParentProxy) {
@@ -384,7 +373,7 @@ function createNodeSVG(node) {
     }
   }
 
-  // 3. テキスト表示（クラスノード以外。コンテナのロック時は左余白を+28px空けて🔒との被りを解消）
+  // 3. テキスト表示
   if (!isClass) {
     const fo = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
     const leftPad = (isContainer && locked) ? 34 : 8;
@@ -415,7 +404,7 @@ function createNodeSVG(node) {
     g.appendChild(fo);
   }
 
-  // 4. ロックバッジ（左上）
+  // 4. ロックバッジ
   if (locked && !node.isParentProxy) {
     const lockBadge = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     lockBadge.setAttribute('transform', `translate(6, 6)`);
@@ -447,7 +436,7 @@ function createNodeSVG(node) {
     g.appendChild(lockBadge);
   }
 
-  // 5. リンクボタン（他ノード・クラス・クラス内関数へジャンプ）
+  // 5. リンクボタン
   if (node.linkTargetNodeId) {
     const targetInfo = findNodeAcrossProject(node.linkTargetNodeId);
     let targetName = 'リンク切れ';
@@ -455,7 +444,7 @@ function createNodeSVG(node) {
       const baseName = targetInfo.node.text || targetInfo.node.id;
       if (node.linkTargetMethodId && Array.isArray(targetInfo.node.methods)) {
         const mtd = targetInfo.node.methods.find(m => m.id === node.linkTargetMethodId);
-        targetName = mtd ? `${baseName}::${mtd.name}` : baseName;
+        targetName = mtd ? `${baseName}::${mtd.memberName || mtd.name}()` : baseName;
       } else {
         targetName = baseName;
       }
@@ -557,7 +546,6 @@ function createNodeSVG(node) {
     if (lastClickInfo.id === node.id && (now - lastClickInfo.time) < 350) {
       lastClickInfo = { id: null, time: 0 };
       const worldPt = screenToWorld(ev.clientX, ev.clientY);
-      // 近くに矢印や他のオブジェクトが密集している場合は周辺選択ポップアップを出すか判定
       const nearbyItems = findNearbyObjects(worldPt.x, worldPt.y, 75);
       const hasEdgesNearby = nearbyItems.some(item => item.kind === 'edge');
       if (hasEdgesNearby) {
@@ -620,7 +608,6 @@ function createNodeSVG(node) {
   return g;
 }
 
-// 参照リンク先（要素・クラス・クラス内の関数）へジャンプする関数
 function jumpToLinkedNode(targetNodeId, targetMethodId = null) {
   const found = findNodeAcrossProject(targetNodeId);
   if (!found) {
@@ -648,7 +635,7 @@ function jumpToLinkedNode(targetNodeId, targetMethodId = null) {
   let msg = `🔗 「${found.node.text || found.node.id}」へ移動しました`;
   if (targetMethodId && Array.isArray(found.node.methods)) {
     const m = found.node.methods.find(item => item.id === targetMethodId);
-    if (m) msg = `🔗 クラス関数「${found.node.text}::${m.name}」へ移動しました`;
+    if (m) msg = `🔗 クラス関数「${found.node.text}::${m.memberName || m.name}()」へ移動しました`;
   }
   showToast(msg);
 
@@ -814,7 +801,6 @@ function createEdgeSVG(edge) {
   const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
   g.style.cursor = 'pointer';
 
-  // 短い矢印でもクリックしやすいよう透明ヒット領域を 20px に拡大
   const hit = document.createElementNS('http://www.w3.org/2000/svg', 'path');
   hit.setAttribute('d', d);
   hit.setAttribute('stroke', 'transparent');
@@ -965,7 +951,6 @@ function renderLayerTree() {
   const treeEl = document.getElementById('layer-tree');
   treeEl.innerHTML = '';
 
-  // 1. クラス図エントリ
   const clsLayer = projectData.layers[CLASS_LAYER_ID];
   if (clsLayer) {
     const clsItem = document.createElement('div');
@@ -977,7 +962,6 @@ function renderLayerTree() {
     treeEl.appendChild(clsItem);
   }
 
-  // 2. フローチャート階層ツリー
   function buildTree(layerId, depth) {
     const l = projectData.layers[layerId];
     if (!l || l.isClassDiagram) return;
