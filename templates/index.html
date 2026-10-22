@@ -45,6 +45,8 @@
     </div>
 
     <div class="header-right">
+      <button class="btn" id="btn-open-json-modal" title="方法A: チャット画面のGeminiとJSONをコピー＆ペーストで連携">📋 JSON入出力</button>
+      <button class="btn btn-purple" id="btn-open-ai-assist" title="方法B: アプリ内蔵のGemini AIに指示して自動生成・編集">✨ AI自動生成</button>
       <div class="project-badge" title="現在開いているプロジェクトID">
         <span>📁</span>
         <span id="current-project-label">未選択</span>
@@ -62,7 +64,7 @@
   <div class="subbar">
     <div class="breadcrumbs" id="breadcrumbs"></div>
     <div class="hint-text">
-      【操作】クラス内の文字クリックで直接入力 ｜ Enter：次の変数/関数を連続追加 ｜ Tab：型へ移動 ｜ 右パネルでテキスト一括編集可
+      【操作】クラス内の文字クリックで直接入力 ｜ Enter：次の変数/関数を連続追加 ｜ ✨AI自動生成 / 📋JSON入出力でGemini連携
     </div>
   </div>
 
@@ -232,7 +234,6 @@
               <option value="">（継承なし）</option>
             </select>
 
-            <!-- Mermaid / draw.io 風のテキスト一括編集モード -->
             <div style="margin-bottom:12px;">
               <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
                 <label style="font-size:11px; color:#fde047; font-weight:700;">
@@ -246,7 +247,6 @@
               </div>
             </div>
 
-            <!-- C# / C++ コード自動生成コピー -->
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:10px;">
               <button type="button" class="btn" id="btn-export-csharp" style="justify-content:center; font-size:11px;">
                 💻 C# コードをコピー
@@ -256,7 +256,6 @@
               </button>
             </div>
 
-            <!-- 折りたたみ式の個別フォーム編集 -->
             <details style="margin-top:4px;">
               <summary style="font-size:11px; color:#93c5fd; cursor:pointer; font-weight:600; padding:4px 0;">
                 🛠️ 個別フォームで追加・並び替え
@@ -457,6 +456,63 @@
             <div style="color:var(--text-sub); font-size:12px; padding:12px;">読み込み中...</div>
           </div>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 【方法A】JSON入出力モーダル（チャット画面のGeminiと手動でデータ連携） -->
+  <div class="modal-backdrop" id="ai-json-modal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2>📋 方法A: JSON入出力 (チャット画面のGeminiと連携)</h2>
+        <button class="btn" id="btn-close-json-modal">閉じる ✕</button>
+      </div>
+      <div class="modal-body">
+        <div style="font-size:12px; color:var(--text-sub); line-height:1.5;">
+          ①「設計JSONをコピー」を押してGeminiチャットに貼り付けると、現在の全階層・クラス図をGeminiが読み取れます。<br>
+          ② Geminiが出力したJSONを下の欄に貼り付けて「設計に反映する」を押すと、キャンバスへ即座に適用されます。
+        </div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <button class="btn btn-primary" id="btn-copy-all-json" style="flex:1; justify-content:center; padding:8px;">
+            📋 ① プロジェクト全体のJSONをコピー
+          </button>
+          <button class="btn" id="btn-copy-layer-json" style="justify-content:center; padding:8px;">
+            📄 現在の階層だけコピー
+          </button>
+          <button class="btn btn-success" id="btn-import-json" style="flex:1; justify-content:center; padding:8px;">
+            📥 ② 貼り付けたJSONを設計に反映する
+          </button>
+        </div>
+        <textarea id="ai-json-textarea" class="form-control bulk-class-editor" rows="12" placeholder="ここに設計JSONが表示されます（またはGeminiが生成したJSONをここに貼り付けます）"></textarea>
+      </div>
+    </div>
+  </div>
+
+  <!-- 【方法B】アプリ内蔵 Gemini AI 自動生成・編集アシスタントモーダル -->
+  <div class="modal-backdrop" id="ai-assist-modal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2>✨ 方法B: Gemini AI 自動生成・編集アシスタント</h2>
+        <button class="btn" id="btn-close-ai-assist">閉じる ✕</button>
+      </div>
+      <div class="modal-body">
+        <div style="font-size:12px; color:var(--text-sub); line-height:1.5;">
+          現在開いているキャンバス（<strong id="ai-target-layer-name" style="color:#93c5fd;">メイン画面</strong>）に対して、フローチャートやクラス図の追加・整理・変更を直接指示できます（<code>Ctrl+Z</code> で元に戻せます）。
+        </div>
+
+        <div class="form-group" style="margin-bottom:0;">
+          <label>AIへの指示内容（プロンプト）</label>
+          <textarea id="ai-prompt-input" class="form-control" rows="4" placeholder="例:&#10;・カードを引いてからコスト判定し、足りれば召喚、足りなければエラー表示するフローを追加して&#10;・CardBaseクラスを継承する「MonsterCard」と「SpellCard」クラスを作成し、適切な変数と関数を持たせて"></textarea>
+        </div>
+
+        <div style="display:flex; justify-content:flex-end; gap:8px;">
+          <button class="btn btn-purple" id="btn-run-ai-assist" style="padding:8px 18px;">
+            <span class="save-spinner" id="ai-spinner"></span>
+            <span id="ai-btn-text">🚀 AIでキャンバスを自動生成・更新する</span>
+          </button>
+        </div>
+
+        <div id="ai-assist-reply" style="display:none; background:#181a1f; border-left:4px solid #8b5cf6; padding:10px 12px; border-radius:6px; font-size:12px; color:#e5e7eb; line-height:1.5;"></div>
       </div>
     </div>
   </div>

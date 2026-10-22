@@ -2214,3 +2214,147 @@ function handleInitialRoute(pushHistory = false) {
 }
 
 handleInitialRoute(false);
+
+/* ==============================================================
+ * 【方法A】JSON入出力モーダル（チャット画面のGeminiとコピペ連携）
+ * ============================================================== */
+const aiJsonModal = document.getElementById('ai-json-modal');
+const aiJsonTextarea = document.getElementById('ai-json-textarea');
+
+document.getElementById('btn-open-json-modal').addEventListener('click', () => {
+  aiJsonTextarea.value = JSON.stringify(projectData, null, 2);
+  aiJsonModal.classList.add('open');
+});
+
+document.getElementById('btn-close-json-modal').addEventListener('click', () => {
+  aiJsonModal.classList.remove('open');
+});
+
+document.getElementById('btn-copy-all-json').addEventListener('click', () => {
+  aiJsonTextarea.value = JSON.stringify(projectData, null, 2);
+  navigator.clipboard.writeText(aiJsonTextarea.value).then(() => {
+    showToast('📋 プロジェクト全体のJSONをコピーしました！Geminiチャットに貼り付けられます');
+  });
+});
+
+document.getElementById('btn-copy-layer-json').addEventListener('click', () => {
+  const layerData = currentLayer();
+  aiJsonTextarea.value = JSON.stringify(layerData, null, 2);
+  navigator.clipboard.writeText(aiJsonTextarea.value).then(() => {
+    showToast(`📄 現在の階層「${layerData.name}」のJSONをコピーしました！`);
+  });
+});
+
+document.getElementById('btn-import-json').addEventListener('click', () => {
+  const raw = aiJsonTextarea.value.trim();
+  if (!raw) return showToast('反映するJSONを貼り付けてください');
+  try {
+    const parsed = JSON.parse(raw);
+    recordHistory(); // Ctrl+Z で戻せるよう履歴に保存
+
+    if (parsed.layers && parsed.layers.root) {
+      // プロジェクト全体のJSONが貼られた場合
+      ensureProjectStructure(parsed);
+      parsed.projectId = projectData.projectId;
+      projectData = parsed;
+      showToast('📥 プロジェクト全体のJSONを反映しました！(Ctrl+Sで保存)');
+    } else if (parsed.nodes && Array.isArray(parsed.nodes)) {
+      // 単一レイヤーのJSONが貼られた場合
+      const curId = projectData.currentLayerId;
+      parsed.id = curId;
+      projectData.layers[curId] = parsed;
+      ensureProjectStructure(projectData);
+      showToast(`📥 現在の階層「${parsed.name || curId}」にJSONを反映しました！`);
+    } else {
+      throw new Error('有効な projectData または layer 形式ではありません');
+    }
+
+    selectedNodeIds.clear();
+    selectedEdgeId = null;
+    aiJsonModal.classList.remove('open');
+    render();
+  } catch (err) {
+    showToast(`JSON読込エラー: ${err.message}`);
+  }
+});
+
+/* ==============================================================
+ * 【方法B】アプリ内蔵 Gemini AI 自動生成・編集アシスタント
+ * ============================================================== */
+const aiAssistModal = document.getElementById('ai-assist-modal');
+const aiPromptInput = document.getElementById('ai-prompt-input');
+const aiReplyBox = document.getElementById('ai-assist-reply');
+
+document.getElementById('btn-open-ai-assist').addEventListener('click', () => {
+  const layer = currentLayer();
+  document.getElementById('ai-target-layer-name').textContent = layer.name || layer.id;
+  aiAssistModal.classList.add('open');
+  aiPromptInput.focus();
+});
+
+document.getElementById('btn-close-ai-assist').addEventListener('click', () => {
+  aiAssistModal.classList.remove('open');
+});
+
+let isAiRunning = false;
+document.getElementById('btn-run-ai-assist').addEventListener('click', async () => {
+  if (isAiRunning) return;
+  const prompt = aiPromptInput.value.trim();
+  if (!prompt) return showToast('AIへの指示を入力してください');
+
+  isAiRunning = true;
+  const runBtn = document.getElementById('btn-run-ai-assist');
+  const spinner = document.getElementById('ai-spinner');
+  const btnText = document.getElementById('ai-btn-text');
+
+  runBtn.disabled = true;
+  spinner.classList.add('active');
+  btnText.textContent = 'Geminiが設計を生成中...';
+  aiReplyBox.style.display = 'none';
+
+  try {
+    const layer = currentLayer();
+    const pid = projectData.projectId || 'default';
+    const res = await fetch(`/api/projects/${encodeURIComponent(pid)}?action=ai_assist`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        _action: 'ai_assist',
+        prompt: prompt,
+        currentLayer: layer,
+        tags: projectData.tags || []
+      })
+    });
+
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.detail || `HTTP ${res.status}`);
+    }
+
+    const result = await res.json();
+    if (result.updatedLayer && Array.isArray(result.updatedLayer.nodes)) {
+      recordHistory(); // 気に入らなければ Ctrl+Z で1発で戻せるように履歴保存
+      const curId = projectData.currentLayerId;
+      result.updatedLayer.id = curId;
+      projectData.layers[curId] = result.updatedLayer;
+      ensureProjectStructure(projectData);
+      render();
+      showToast('✨ AIによる生成・編集が完了しました！(Ctrl+Zで元に戻せます)');
+    }
+
+    if (result.reply) {
+      aiReplyBox.textContent = `🤖 AIからの報告: ${result.reply}`;
+      aiReplyBox.style.display = 'block';
+    }
+  } catch (err) {
+    console.error(err);
+    showToast(`AI実行エラー: ${err.message}`);
+    aiReplyBox.textContent = `⚠️ エラー: ${err.message}`;
+    aiReplyBox.style.display = 'block';
+  } finally {
+    isAiRunning = false;
+    runBtn.disabled = false;
+    spinner.classList.remove('active');
+    btnText.textContent = '🚀 AIでキャンバスを自動生成・更新する';
+  }
+});

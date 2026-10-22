@@ -8,6 +8,8 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 import firebase_admin
 from firebase_admin import credentials, firestore
+from google import genai
+from google.genai import types
 
 load_dotenv()
 
@@ -68,6 +70,73 @@ async def list_projects_from_db():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"一覧取得エラー: {str(e)}")
 
+async def handle_ai_assist(payload: Dict[str, Any]):
+    """方法B: Gemini API (無料枠対応 gemini-2.5-flash) を使って現在の階層やクラス図を自動生成・編集する"""
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        raise HTTPException(
+            status_code=500,
+            detail="環境変数 GEMINI_API_KEY が設定されていません。.env または VercelのEnvironment Variablesに設定してください。"
+        )
+
+    prompt = (payload.get("prompt") or "").strip()
+    if not prompt:
+        raise HTTPException(status_code=400, detail="AIへの指示（プロンプト）が空です。")
+
+    current_layer = payload.get("currentLayer", {})
+    tags = payload.get("tags", [])
+    is_class_mode = bool(current_layer.get("isClassDiagram"))
+
+    system_instruction = f"""あなたはゲーム開発・ソフトウェア設計支援ツール「FlowHierarchy Studio」のAI設計アシスタントです。
+ユーザーの指示に従い、現在開いているレイヤー（{"クラス図" if is_class_mode else "フローチャート階層"}）の `nodes` と `edges` を追加・編集・整理し、指定されたJSONフォーマットのみで出力してください。
+
+【重要な座標・データ設計ルール】
+1. 座標 (x, y) やサイズ (width, height) は必ず 24 の倍数（24pxグリッド）に揃えて重ならないように綺麗に配置してください。
+   - 縦に並べる場合は y を +144〜+168 ずつずらす、横に並べる場合は x を +264〜+312 ずつずらすと綺麗に整列します。
+2. 既存のノードやエッジで、ユーザーが削除を指示していないもの（特に `"isParentProxy": true` の親階層ノード）は消さずにそのまま維持してください。
+3. ノードのスキーマ:
+   - 矩形 (`type: "rect"`): width=192, height=84, color="#dbeafe", fontSize=14, textAlign="center", tags=[], locked=false, isParentProxy=false
+   - コンテナ (`type: "container"`): width=384, height=264, color="#e2e8f0", textAlign="left" (中に入れる矩形の `parentGroupId` にコンテナの `id` を設定)
+   - メモ (`type: "memo"`): width=192, height=108, color="#fef08a", textAlign="left", parentObjectType="node"|"edge"|null, parentObjectId=対象ID
+   - クラス (`type: "class"`): width=276, height=192, color="#f3e8ff", fontSize=13, textAlign="left",
+     `fields`: `[{{ "id": "fld_xxx", "access": "private"|"public"|"protected", "memberName": "hp", "dataType": "int" }}]`,
+     `methods`: `[{{ "id": "mtd_xxx", "access": "public"|"private"|"protected", "memberName": "Attack", "args": "power: int", "returnType": "void" }}]`
+4. エッジ（矢印）のスキーマ:
+   - `{{ "id": "edge_xxx", "source": "元ノードID", "sourcePort": "bottom"|"right"|"top"|"left", "target": "先ノードID", "targetPort": "top"|"left"|"bottom"|"right", "relationType": "normal"|"inheritance"|"implementation"|"dependency", "label": "", "color": "#475569" }}`
+   - クラス図の継承（子クラス extends 親クラス）の場合は、source=子クラスID, target=親クラスID, relationType="inheritance", label="extends" にしてください。
+5. 利用可能なプロジェクトタグ一覧: {json.dumps(tags, ensure_ascii=False)}
+
+【返却するJSON形式】
+必ず以下のキーを持つJSONオブジェクトのみを返してください:
+{{
+  "reply": "どのような要素を追加・変更したかの簡潔な説明メッセージ（日本語）",
+  "updatedLayer": {{ ...更新後の currentLayer オブジェクト全体 (id, name, nodes, edges 等を含む)... }}
+}}
+"""
+
+    user_content = f"""【現在のレイヤーデータ (JSON)】
+{json.dumps(current_layer, ensure_ascii=False)}
+
+【ユーザーからの指示】
+{prompt}
+"""
+
+    try:
+        client = genai.Client(api_key=api_key.strip())
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=user_content,
+            config=types.GenerateContentConfig(
+                system_instruction=system_instruction,
+                response_mime_type="application/json",
+                temperature=0.2,
+            ),
+        )
+        result_json = json.loads(response.text)
+        return result_json
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Gemini API エラー: {str(e)}")
+
 @app.get("/static/{file_path:path}")
 async def serve_static_files(file_path: str):
     target_file = (STATIC_DIR / file_path).resolve()
@@ -113,6 +182,10 @@ async def load_project(project_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Firestore読込エラー: {str(e)}")
 
+@app.post("/api/ai-assist")
+async def api_ai_assist_direct(payload: Dict[str, Any]):
+    return await handle_ai_assist(payload)
+
 @app.post("/")
 @app.post("/p/{path_project_id}")
 @app.post("/api/index")
@@ -124,6 +197,10 @@ async def save_project(
     path_project_id: Optional[str] = None,
     action: Optional[str] = None
 ):
+    # VercelでURLが書き換えられても action=ai_assist で確実にAI処理へ分岐できるようにする
+    if action == "ai_assist" or payload.get("_action") == "ai_assist":
+        return await handle_ai_assist(payload)
+
     try:
         target_id = project_id or payload.get("projectId") or path_project_id or "default_project"
         db = get_firestore_db()
@@ -133,7 +210,6 @@ async def save_project(
             doc_ref.delete()
             return {"status": "deleted", "projectId": target_id}
 
-        # tags も確実にFirestoreへ保存する
         doc_ref.set({
             "projectId": target_id,
             "currentLayerId": payload.get("currentLayerId", "root"),
