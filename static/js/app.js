@@ -1,5 +1,5 @@
 /**************************************************************
- * app.js : タグ名＆色編集・クラスGUI直接追加・継承関係構築・Firebase保存
+ * app.js : クラス爆速編集（Enter連続追加・一括テキスト・コード出力）
  **************************************************************/
 
 document.getElementById('btn-mode-flow').addEventListener('click', () => {
@@ -14,10 +14,9 @@ document.getElementById('btn-mode-class').addEventListener('click', () => {
   }
 });
 
-/* --- タグ管理（タグ名称＆色の編集に対応） --- */
+/* --- タグ管理 --- */
 function renderProjectTagManager() {
   const container = document.getElementById('project-tag-list');
-  // タグ名入力中にフォーカスが外れないよう、編集中は再構築をスキップ
   if (document.activeElement && document.activeElement.classList.contains('tag-manage-name-input')) {
     return;
   }
@@ -91,11 +90,9 @@ document.getElementById('btn-create-tag').addEventListener('click', () => {
   showToast(`🏷️ タグ「${name}」を作成しました（Ctrl+SでDB保存）`);
 });
 
-/* --- キャンバス上のクラスノード内で直接「＋変数」「＋関数」を追加・インライン編集 --- */
+/* --- キャンバス上のクラスノード内で「＋変数」「＋関数」を追加し、その入力欄へ自動フォーカス --- */
 function quickAddClassMemberOnCanvas(classNode, kind) {
-  commitInlineEdit();
   recordHistory();
-
   selectedNodeIds.clear();
   selectedNodeIds.add(classNode.id);
   selectedEdgeId = null;
@@ -107,7 +104,7 @@ function quickAddClassMemberOnCanvas(classNode, kind) {
     newMember = normalizeClassMember({
       id: uid('fld'),
       access: 'private',
-      memberName: `field${idx}`,
+      memberName: `value${idx}`,
       dataType: 'int'
     }, false);
     classNode.fields.push(newMember);
@@ -125,47 +122,180 @@ function quickAddClassMemberOnCanvas(classNode, kind) {
   }
 
   autoAdjustClassNodeHeight(classNode);
+  // 再描画後に新しく作られた入力欄を自動フォーカス＆全選択する
+  pendingFocusSelector = `input[data-member-name="${newMember.id}"]`;
   render();
-
-  // 追加した直後にその場で名前・型のインライン編集を自動的に開く
-  startInlineEditClassMember(classNode, kind, newMember, null);
 }
 
-function startInlineEditClassMember(classNode, kind, member, rowDOM = null) {
-  if (isNodeLocked(classNode)) return;
-  commitInlineEdit();
+// 親クラスからワンクリックで「子クラス（派生クラス）」を下に生成し、継承(extends)矢印で繋ぐ
+function spawnChildClassFromParent(parentNode) {
+  recordHistory();
+  const layer = currentLayer();
+  const w = parentNode.width || 276;
+  const h = 192;
+  const childX = snapToGrid(parentNode.x);
+  const childY = snapToGrid(parentNode.y + parentNode.height + 72);
 
-  editingNodeId = classNode.id;
-  editingMemberSpec = { nodeId: classNode.id, kind, memberId: member.id };
+  const childNode = {
+    id: uid('cls'),
+    type: 'class',
+    text: `${parentNode.text || 'Base'}Child`,
+    x: childX,
+    y: childY,
+    width: w,
+    height: h,
+    color: parentNode.color || '#f3e8ff',
+    fontSize: parentNode.fontSize || 13,
+    fontFamily: parentNode.fontFamily || "'Consolas', 'Meiryo', monospace",
+    textAlign: 'left',
+    tags: Array.isArray(parentNode.tags) && parentNode.tags.length > 0 ? [parentNode.tags[0]] : [],
+    fields: [],
+    methods: [],
+    parentGroupId: parentNode.parentGroupId || null,
+    childLayerId: null,
+    locked: false,
+    isParentProxy: false,
+    linkTargetNodeId: null,
+    linkTargetLayerId: null,
+    linkTargetMethodId: null
+  };
 
-  const isMethod = (kind === 'method');
-  const currentText = isMethod
-    ? `${member.memberName}(${member.args || ''}): ${member.returnType || 'void'}`
-    : `${member.memberName}: ${member.dataType || 'int'}`;
+  layer.nodes.push(childNode);
+  layer.edges.push({
+    id: uid('edge'),
+    source: childNode.id,
+    sourcePort: 'top',
+    target: parentNode.id,
+    targetPort: 'bottom',
+    relationType: 'inheritance',
+    label: 'extends',
+    color: '#475569'
+  });
 
-  const svgRect = svg.getBoundingClientRect();
-  inlineEditor.style.display = 'block';
+  selectedNodeIds.clear();
+  selectedNodeIds.add(childNode.id);
+  selectedEdgeId = null;
+  pendingFocusSelector = `input[data-cls-title="${childNode.id}"]`;
+  render();
+  showToast(`🧬 「${parentNode.text}」を継承する子クラスを生成しました`);
+}
 
-  if (rowDOM) {
-    const r = rowDOM.getBoundingClientRect();
-    inlineEditor.style.left = `${r.left - svgRect.left}px`;
-    inlineEditor.style.top = `${r.top - svgRect.top - 2}px`;
-    inlineEditor.style.width = `${Math.max(160, r.width)}px`;
-    inlineEditor.style.height = `28px`;
-  } else {
-    inlineEditor.style.left = `${panX + (classNode.x + 12) * zoom}px`;
-    inlineEditor.style.top = `${panY + (classNode.y + classNode.height - 46) * zoom}px`;
-    inlineEditor.style.width = `${(classNode.width - 24) * zoom}px`;
-    inlineEditor.style.height = `30px`;
+document.getElementById('btn-spawn-child-class').addEventListener('click', () => {
+  const layer = currentLayer();
+  const cls = layer.nodes.find(n => selectedNodeIds.has(n.id) && n.type === 'class');
+  if (cls) spawnChildClassFromParent(cls);
+});
+
+/* --- Mermaid / draw.io 風の「テキスト一括編集」双方向同期 --- */
+function serializeClassToBulkText(classNode) {
+  const lines = [classNode.text || 'ClassName', '---'];
+  (classNode.fields || []).forEach(f => {
+    normalizeClassMember(f, false);
+    lines.push(formatClassField(f));
+  });
+  lines.push('---');
+  (classNode.methods || []).forEach(m => {
+    normalizeClassMember(m, true);
+    lines.push(formatClassMethod(m));
+  });
+  return lines.join('\n');
+}
+
+function applyBulkTextToClassNode(classNode, rawText) {
+  const lines = rawText.split(/\r?\n/);
+  const newFields = [];
+  const newMethods = [];
+  let oldFieldIdx = 0;
+  let oldMethodIdx = 0;
+  let section = 0; // 0: クラス名, 1: メンバ
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    if (line.startsWith('---') || line.startsWith('===')) {
+      section++;
+      continue;
+    }
+    if (section === 0 && i === 0 && !line.startsWith('+') && !line.startsWith('-') && !line.startsWith('#') && !line.includes(':') && !line.includes('(')) {
+      classNode.text = line;
+      section = 1;
+      continue;
+    }
+
+    // () が含まれていれば関数（メソッド）、なければ変数（フィールド）として自動判別
+    const isMethod = line.includes('(');
+    if (isMethod) {
+      const existing = (classNode.methods || [])[oldMethodIdx++];
+      const mObj = existing ? { ...existing } : { id: uid('mtd'), access: 'public', memberName: 'Method', args: '', returnType: 'void' };
+      parseInlineMemberText(mObj, line, true);
+      newMethods.push(mObj);
+    } else {
+      const existing = (classNode.fields || [])[oldFieldIdx++];
+      const fObj = existing ? { ...existing } : { id: uid('fld'), access: 'private', memberName: 'field', dataType: 'int' };
+      parseInlineMemberText(fObj, line, false);
+      newFields.push(fObj);
+    }
   }
 
-  inlineEditor.style.fontSize = `${Math.max(12, (classNode.fontSize || 13) * zoom)}px`;
-  inlineEditor.style.fontFamily = "'Consolas', 'Meiryo', monospace";
-  inlineEditor.style.textAlign = 'left';
-  inlineEditor.value = currentText;
-  inlineEditor.focus();
-  inlineEditor.select();
+  classNode.fields = newFields;
+  classNode.methods = newMethods;
+  autoAdjustClassNodeHeight(classNode);
 }
+
+/* --- C# / C++ クラス定義コード自動生成 --- */
+function exportClassCode(classNode, lang = 'csharp') {
+  const layer = currentLayer();
+  const inheritEdge = layer.edges.find(e => e.source === classNode.id && e.relationType === 'inheritance');
+  const parentCls = inheritEdge ? layer.nodes.find(n => n.id === inheritEdge.target) : null;
+  const parentName = parentCls ? parentCls.text : '';
+
+  const clsName = (classNode.text || 'MyClass').replace(/\s+/g, '');
+  let code = '';
+
+  if (lang === 'csharp') {
+    const ext = parentName ? ` : ${parentName}` : '';
+    code += `public class ${clsName}${ext}\n{\n`;
+    (classNode.fields || []).forEach(f => {
+      normalizeClassMember(f, false);
+      code += `    ${f.access || 'private'} ${f.dataType || 'int'} ${f.memberName};\n`;
+    });
+    if ((classNode.fields || []).length > 0 && (classNode.methods || []).length > 0) code += `\n`;
+    (classNode.methods || []).forEach(m => {
+      normalizeClassMember(m, true);
+      code += `    ${m.access || 'public'} ${m.returnType || 'void'} ${m.memberName}(${m.args || ''})\n    {\n    }\n`;
+    });
+    code += `}\n`;
+  } else {
+    const ext = parentName ? ` : public ${parentName}` : '';
+    code += `#pragma once\n\nclass ${clsName}${ext}\n{\n`;
+    ['public', 'protected', 'private'].forEach(acc => {
+      const fList = (classNode.fields || []).filter(f => (f.access || 'private') === acc);
+      const mList = (classNode.methods || []).filter(m => (m.access || 'public') === acc);
+      if (fList.length === 0 && mList.length === 0) return;
+      code += `${acc}:\n`;
+      fList.forEach(f => {
+        code += `    ${f.dataType || 'int'} ${f.memberName};\n`;
+      });
+      mList.forEach(m => {
+        code += `    ${m.returnType || 'void'} ${m.memberName}(${m.args || ''});\n`;
+      });
+    });
+    code += `};\n`;
+  }
+
+  navigator.clipboard.writeText(code).then(() => {
+    showToast(`💻 ${lang === 'csharp' ? 'C#' : 'C++ (.h)'} のクラスコードをコピーしました！`);
+  });
+}
+
+document.getElementById('btn-export-csharp').addEventListener('click', () => {
+  const cls = currentLayer().nodes.find(n => selectedNodeIds.has(n.id) && n.type === 'class');
+  if (cls) exportClassCode(cls, 'csharp');
+});
+document.getElementById('btn-export-cpp').addEventListener('click', () => {
+  const cls = currentLayer().nodes.find(n => selectedNodeIds.has(n.id) && n.type === 'class');
+  if (cls) exportClassCode(cls, 'cpp');
+});
 
 /* --- ダブルクリック時の「周辺オブジェクト選択ポップアップ」 --- */
 function findNearbyObjects(worldX, worldY, radius = 90) {
@@ -275,7 +405,7 @@ function insertNodeBetweenEdge(edgeId) {
   recordHistory();
 
   const inClass = isClassMode();
-  const w = inClass ? 264 : (srcNode.type === 'rect' ? srcNode.width : 192);
+  const w = inClass ? 276 : (srcNode.type === 'rect' ? srcNode.width : 192);
   const h = inClass ? 192 : (srcNode.type === 'rect' ? srcNode.height : 84);
   const p1 = getPortCoords(srcNode, edge.sourcePort);
   const p2 = getPortCoords(tgtNode, edge.targetPort);
@@ -536,7 +666,7 @@ function openContextMenuAt(clientX, clientY) {
 function spawnConnectedNode(sourceNode, sourcePort, dropX, dropY, isClickOnly = false) {
   const layer = currentLayer();
   const inClass = isClassMode();
-  const w = inClass ? 264 : (sourceNode.type === 'rect' ? sourceNode.width : 192);
+  const w = inClass ? 276 : (sourceNode.type === 'rect' ? sourceNode.width : 192);
   const h = inClass ? 192 : (sourceNode.type === 'rect' ? sourceNode.height : 84);
   let pos;
 
@@ -584,7 +714,6 @@ function spawnConnectedNode(sourceNode, sourcePort, dropX, dropY, isClickOnly = 
 
   const targetPort = getOppositePort(sourcePort);
   if (inClass && sourceNode.type === 'class') {
-    // クラス図での新規クラス派生時は「子クラス ➔ 親クラス(sourceNode)」への継承（▷）矢印を自動構築
     layer.edges.push({
       id: uid('edge'),
       source: newNode.id,
@@ -595,6 +724,7 @@ function spawnConnectedNode(sourceNode, sourcePort, dropX, dropY, isClickOnly = 
       label: 'extends',
       color: '#475569'
     });
+    pendingFocusSelector = `input[data-cls-title="${newNode.id}"]`;
   } else {
     layer.edges.push({
       id: uid('edge'),
@@ -736,7 +866,7 @@ svg.addEventListener('wheel', (ev) => {
   updateViewportTransform();
 }, { passive: false });
 
-/* --- インライン編集（ノード名 ＆ クラス内変数・関数の直接編集対応） --- */
+/* --- インライン編集 --- */
 miniToolbar.addEventListener('mousedown', (ev) => ev.stopPropagation());
 contextMenu.addEventListener('mousedown', (ev) => ev.stopPropagation());
 inlineEditor.addEventListener('mousedown', (ev) => ev.stopPropagation());
@@ -757,6 +887,11 @@ function toggleLockSelection() {
 
 function startInlineEdit(node) {
   if (isNodeLocked(node)) return;
+  if (node.type === 'class') {
+    pendingFocusSelector = `input[data-cls-title="${node.id}"]`;
+    render();
+    return;
+  }
   editingNodeId = node.id;
   editingMemberSpec = null;
   selectedNodeIds.clear();
@@ -767,7 +902,7 @@ function startInlineEdit(node) {
   inlineEditor.style.left = `${ panX + node.x * zoom }px`;
   inlineEditor.style.top = `${ panY + node.y * zoom }px`;
   inlineEditor.style.width = `${ node.width * zoom }px`;
-  const editH = (node.type === 'container' || node.type === 'class') ? 34 : node.height;
+  const editH = node.type === 'container' ? 34 : node.height;
   inlineEditor.style.height = `${ editH * zoom }px`;
   inlineEditor.style.fontSize = `${ (node.fontSize || 14) * zoom }px`;
   inlineEditor.style.fontFamily = node.fontFamily || "'Segoe UI', 'Meiryo', sans-serif";
@@ -782,16 +917,7 @@ function commitInlineEdit() {
   const node = currentLayer().nodes.find(n => n.id === editingNodeId);
 
   if (node && !isNodeLocked(node)) {
-    if (editingMemberSpec) {
-      // クラス内の変数または関数のインライン編集確定
-      const isMethod = (editingMemberSpec.kind === 'method');
-      const list = isMethod ? (node.methods || []) : (node.fields || []);
-      const targetMember = list.find(m => m.id === editingMemberSpec.memberId);
-      if (targetMember) {
-        recordHistory();
-        parseInlineMemberText(targetMember, inlineEditor.value, isMethod);
-      }
-    } else if (node.text !== inlineEditor.value) {
+    if (node.text !== inlineEditor.value) {
       recordHistory();
       node.text = inlineEditor.value;
       if (node.childLayerId && projectData.layers[node.childLayerId]) {
@@ -1130,7 +1256,7 @@ function populateNodeTagSelector(selectedNodes) {
   });
 }
 
-/* --- 右パネル：クラスの継承元（親クラス）選択プルダウン＆メンバリスト --- */
+/* --- 右パネル：クラスの継承元選択 ＆ 一括テキスト編集 ＆ 個別リスト --- */
 function populateClassExtendsSelector(classNode) {
   const select = document.getElementById('prop-class-extends');
   const layer = currentLayer();
@@ -1155,7 +1281,6 @@ document.getElementById('prop-class-extends').addEventListener('change', (ev) =>
 
   recordHistory();
   const newParentId = ev.target.value;
-  // 既存の継承エッジを一旦削除
   layer.edges = layer.edges.filter(e => !(e.source === classNode.id && e.relationType === 'inheritance'));
 
   if (newParentId) {
@@ -1181,8 +1306,29 @@ document.getElementById('prop-class-extends').addEventListener('change', (ev) =>
   render();
 });
 
+const bulkTextarea = document.getElementById('prop-class-bulk-text');
+bulkTextarea.addEventListener('change', () => {
+  const cls = currentLayer().nodes.find(n => selectedNodeIds.has(n.id) && n.type === 'class');
+  if (!cls || isNodeLocked(cls)) return;
+  recordHistory();
+  applyBulkTextToClassNode(cls, bulkTextarea.value);
+  render();
+});
+bulkTextarea.addEventListener('input', () => {
+  const cls = currentLayer().nodes.find(n => selectedNodeIds.has(n.id) && n.type === 'class');
+  if (!cls || isNodeLocked(cls)) return;
+  applyBulkTextToClassNode(cls, bulkTextarea.value);
+  render();
+});
+
 function renderClassMembersEditor(classNode) {
   populateClassExtendsSelector(classNode);
+
+  // 一括編集テキストエリアにフォーカスがない時のみ内容を最新状態に同期
+  if (document.activeElement !== bulkTextarea) {
+    bulkTextarea.value = serializeClassToBulkText(classNode);
+  }
+  bulkTextarea.disabled = isNodeLocked(classNode);
 
   const fieldListEl = document.getElementById('class-field-list');
   const methodListEl = document.getElementById('class-method-list');
@@ -1200,7 +1346,7 @@ function renderClassMembersEditor(classNode) {
         <option value="protected" ${f.access === 'protected' ? 'selected' : ''}># prot</option>
       </select>
       <input type="text" class="m-name" value="${f.memberName || ''}" placeholder="変数名">
-      <input type="text" class="m-type" value="${f.dataType || ''}" placeholder="型">
+      <input type="text" class="m-type" list="type-suggestions" value="${f.dataType || ''}" placeholder="型">
       <button class="btn btn-danger" style="padding:2px 6px; font-size:10px;">✕</button>
     `;
     const selEl = row.querySelector('select');
@@ -1237,9 +1383,9 @@ function renderClassMembersEditor(classNode) {
         <option value="private" ${m.access === 'private' ? 'selected' : ''}>- priv</option>
         <option value="protected" ${m.access === 'protected' ? 'selected' : ''}># prot</option>
       </select>
-      <input type="text" class="m-name" value="${m.memberName || ''}" placeholder="関数名" title="関数名">
-      <input type="text" class="m-args" value="${m.args || ''}" placeholder="引数" title="引数">
-      <input type="text" class="m-type" value="${m.returnType || ''}" placeholder="戻り値型" title="戻り値型">
+      <input type="text" class="m-name" value="${m.memberName || ''}" placeholder="関数名">
+      <input type="text" class="m-args" value="${m.args || ''}" placeholder="引数">
+      <input type="text" class="m-type" list="type-suggestions" value="${m.returnType || ''}" placeholder="型">
       <button class="btn btn-danger" style="padding:2px 6px; font-size:10px;">✕</button>
     `;
     const selEl = row.querySelector('select');
@@ -1293,6 +1439,7 @@ document.getElementById('btn-add-class-field').addEventListener('click', () => {
   }, true);
   nameEl.value = '';
   typeEl.value = '';
+  nameEl.focus();
 });
 
 document.getElementById('btn-add-class-method').addEventListener('click', () => {
@@ -1322,6 +1469,7 @@ document.getElementById('btn-add-class-method').addEventListener('click', () => 
   nameEl.value = '';
   typeEl.value = '';
   argsEl.value = '';
+  nameEl.focus();
 });
 
 function populateMemoParentOptions(memoNode) {
@@ -1351,7 +1499,7 @@ function populateMemoParentOptions(memoNode) {
   });
 }
 
-/* --- 右パネル：リンク選択 ＆ 被リンク（逆参照）一覧 --- */
+/* --- 右パネル：リンク選択 ＆ 被リンク一覧 --- */
 function populateLinkTargetOptions(currentNode) {
   const select = document.getElementById('prop-link-select');
   const searchInput = document.getElementById('prop-link-search');
@@ -1512,8 +1660,7 @@ function updatePropertyPanel() {
       const isMemo = first.type === 'memo';
       const isClass = first.type === 'class';
 
-      document.getElementById('prop-text-group').style.display = 'block';
-      document.getElementById('prop-text-label').textContent = isClass ? 'クラス名' : 'テキスト (ダブルクリックでも編集可)';
+      document.getElementById('prop-text-group').style.display = isClass ? 'none' : 'block';
       document.getElementById('prop-text').value = first.text || '';
       document.getElementById('prop-pos-group').style.display = 'grid';
       document.getElementById('prop-w').value = first.width;
@@ -1564,7 +1711,6 @@ function updatePropertyPanel() {
   }
 }
 
-// 矢印の種類（継承・実装・通常・依存）切替ボタン
 function setSelectedEdgeRelationType(relType) {
   const edge = currentLayer().edges.find(ed => ed.id === selectedEdgeId);
   if (!edge) return;
@@ -1722,7 +1868,7 @@ function addNode(type, customWorldPos = null, parentSpec = null) {
     text: isCont ? '新規グループコンテナ' : (isMemo ? '仕様メモ' : (isClass ? 'NewClass' : '')),
     x: baseX,
     y: baseY,
-    width: isCont ? 360 : (isClass ? 264 : 192),
+    width: isCont ? 360 : (isClass ? 276 : 192),
     height: isCont ? 240 : (isClass ? 192 : (isMemo ? 108 : 84)),
     color: isCont ? '#e2e8f0' : (isMemo ? '#fef08a' : (isClass ? '#f3e8ff' : '#dbeafe')),
     fontSize: isClass ? 13 : 14,
@@ -1748,6 +1894,9 @@ function addNode(type, customWorldPos = null, parentSpec = null) {
   selectedNodeIds.clear();
   selectedNodeIds.add(newNode.id);
   selectedEdgeId = null;
+  if (isClass) {
+    pendingFocusSelector = `input[data-cls-title="${newNode.id}"]`;
+  }
   render();
   return newNode;
 }
@@ -1850,7 +1999,7 @@ function setupResizer(resizerEl, panelEl, isLeft) {
   window.addEventListener('mousemove', (e) => {
     if (!dragging) return;
     const newW = isLeft ? e.clientX : (window.innerWidth - e.clientX);
-    panelEl.style.width = `${Math.max(160, Math.min(500, newW))}px`;
+    panelEl.style.width = `${Math.max(160, Math.min(520, newW))}px`;
   });
   window.addEventListener('mouseup', () => {
     if (dragging) {
@@ -1952,8 +2101,7 @@ async function saveCurrentProject() {
   const pid = projectData.projectId;
   if (!pid) return showToast('プロジェクトが選択されていません');
 
-  // タグ名入力欄にフォーカスがある場合は確定させてから保存
-  if (document.activeElement && document.activeElement.classList.contains('tag-manage-name-input')) {
+  if (document.activeElement && ['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) {
     document.activeElement.blur();
   }
 

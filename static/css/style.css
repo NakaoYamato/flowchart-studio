@@ -203,7 +203,7 @@ header::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 2px; }
   flex-shrink: 0;
 }
 #left-panel { width: 240px; min-width: 160px; max-width: 450px; border-right: 1px solid var(--border-color); }
-#right-panel { width: 310px; min-width: 210px; max-width: 540px; border-left: 1px solid var(--border-color); }
+#right-panel { width: 320px; min-width: 220px; max-width: 560px; border-left: 1px solid var(--border-color); }
 .side-panel.hidden { display: none !important; }
 
 .resizer {
@@ -230,7 +230,7 @@ header::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 2px; }
   letter-spacing: 0.5px;
 }
 
-/* タグ管理リスト（タグ名のインライン編集対応） */
+/* タグ管理リスト */
 .tag-manage-list {
   display: flex;
   flex-direction: column;
@@ -295,16 +295,52 @@ header::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 2px; }
   box-shadow: 0 2px 6px rgba(0,0,0,0.4);
 }
 
-/* キャンバス上のクラスノード内インタラクティブGUI */
+/* キャンバス上のクラスノード内・直接編集可能なスプレッドシート型GUI */
+.cls-title-input {
+  background: transparent;
+  border: 1px solid transparent;
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 13px;
+  font-family: 'Consolas', 'Meiryo', monospace;
+  text-align: center;
+  width: 145px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  pointer-events: auto;
+  user-select: text;
+}
+.cls-title-input:hover,
+.cls-title-input:focus {
+  background: rgba(255, 255, 255, 0.18);
+  border-color: #ffffff;
+  outline: none;
+}
+.cls-sub-spawn-btn {
+  background: #10b981;
+  color: #ffffff;
+  border: 1px solid #ffffff;
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 9px;
+  font-weight: 700;
+  cursor: pointer;
+  pointer-events: auto;
+  white-space: nowrap;
+}
+.cls-sub-spawn-btn:hover {
+  background: #059669;
+}
+
 .cls-gui-section-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 2px 6px;
-  background: rgba(109, 40, 217, 0.1);
+  background: rgba(109, 40, 217, 0.12);
   font-size: 10px;
   font-weight: 700;
-  color: #5b21b6;
+  color: #4c1d95;
 }
 .cls-gui-add-btn {
   background: #7c3aed;
@@ -323,40 +359,60 @@ header::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 2px; }
 .cls-gui-member-row {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 2px 6px;
+  gap: 2px;
+  padding: 2px 4px;
   border-radius: 4px;
   pointer-events: auto;
-  transition: background 0.12s;
+  transition: background 0.1s;
 }
-.cls-gui-member-row:hover {
-  background: rgba(124, 58, 237, 0.14);
+.cls-gui-member-row:hover,
+.cls-gui-member-row:focus-within {
+  background: rgba(124, 58, 237, 0.15);
 }
 .cls-gui-access-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 17px;
-  height: 17px;
+  height: 18px;
   border-radius: 4px;
   font-weight: 700;
   font-size: 11px;
   cursor: pointer;
   flex-shrink: 0;
-  background: rgba(109, 40, 217, 0.18);
+  background: rgba(109, 40, 217, 0.2);
   color: #4c1d95;
 }
 .cls-gui-access-btn:hover {
   background: #7c3aed;
   color: #fff;
 }
-.cls-gui-member-text {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  cursor: text;
+.cls-inline-input {
+  background: transparent;
+  border: 1px solid transparent;
+  color: #1e293b;
+  font-family: 'Consolas', 'Meiryo', monospace;
+  font-size: 12px;
+  padding: 1px 3px;
+  border-radius: 3px;
+  min-width: 30px;
+  user-select: text;
 }
+.cls-inline-input:hover {
+  background: rgba(255, 255, 255, 0.65);
+  border-color: #cbd5e1;
+}
+.cls-inline-input:focus {
+  background: #ffffff;
+  border-color: #3b82f6;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25);
+}
+.cls-inline-name { flex: 1.2; width: 65px; font-weight: 600; }
+.cls-inline-args { flex: 1.1; width: 55px; color: #334155; }
+.cls-inline-type { flex: 0.9; width: 48px; color: #0f766e; font-weight: 600; }
+.cls-sep { font-size: 11px; color: #64748b; font-weight: bold; }
+
 .cls-gui-del-btn {
   opacity: 0;
   background: #ef4444;
@@ -371,8 +427,24 @@ header::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 2px; }
   cursor: pointer;
   flex-shrink: 0;
 }
-.cls-gui-member-row:hover .cls-gui-del-btn {
+.cls-gui-member-row:hover .cls-gui-del-btn,
+.cls-gui-member-row:focus-within .cls-gui-del-btn {
   opacity: 1;
+}
+
+/* 右パネルの一括テキストエディタ (Mermaid / draw.io スタイル) */
+.bulk-class-editor {
+  font-family: 'Consolas', 'Meiryo', monospace !important;
+  font-size: 12px !important;
+  line-height: 1.5 !important;
+  background: #111318 !important;
+  border: 1px solid #4b5563 !important;
+  color: #f3f4f6 !important;
+  resize: vertical;
+}
+.bulk-class-editor:focus {
+  border-color: #8b5cf6 !important;
+  outline: none;
 }
 
 /* 右パネルのクラスメンバ構造化入力＆編集リスト */
@@ -415,22 +487,10 @@ header::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 2px; }
   font-size: 11px;
   font-family: 'Consolas', monospace;
 }
-.member-edit-row select {
-  width: 68px;
-  flex-shrink: 0;
-}
-.member-edit-row input.m-name {
-  flex: 1.2;
-  min-width: 50px;
-}
-.member-edit-row input.m-args {
-  flex: 1;
-  min-width: 45px;
-}
-.member-edit-row input.m-type {
-  flex: 0.9;
-  min-width: 42px;
-}
+.member-edit-row select { width: 68px; flex-shrink: 0; }
+.member-edit-row input.m-name { flex: 1.2; min-width: 50px; }
+.member-edit-row input.m-args { flex: 1; min-width: 45px; }
+.member-edit-row input.m-type { flex: 0.9; min-width: 42px; }
 
 /* 逆参照（被リンク）リスト */
 .backlinks-list {
@@ -530,10 +590,7 @@ header::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 2px; }
   font-size: 12px;
   cursor: pointer;
 }
-#mini-toolbar input[type="color"]:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
-}
+#mini-toolbar input[type="color"]:disabled { opacity: 0.35; cursor: not-allowed; }
 #mini-toolbar input[type="range"] { width: 60px; cursor: pointer; }
 .align-group {
   display: inline-flex;
@@ -576,11 +633,7 @@ header::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 2px; }
   gap: 8px;
 }
 .ctx-item:hover { background: var(--accent); color: #fff; }
-.ctx-divider {
-  height: 1px;
-  background: #333842;
-  margin: 4px 0;
-}
+.ctx-divider { height: 1px; background: #333842; margin: 4px 0; }
 
 /* ダブルクリック周辺オブジェクト選択ポップアップ */
 #nearby-picker {
@@ -626,10 +679,7 @@ header::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 2px; }
   justify-content: space-between;
   gap: 8px;
 }
-.nearby-item:hover {
-  background: var(--accent);
-  color: #fff;
-}
+.nearby-item:hover { background: var(--accent); color: #fff; }
 
 /* Inline Text Editor */
 #inline-editor {

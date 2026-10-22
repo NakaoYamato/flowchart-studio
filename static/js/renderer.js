@@ -1,6 +1,18 @@
 /**************************************************************
- * renderer.js : SVG描画エンジン（クラスGUI直接追加・継承矢印対応）
+ * renderer.js : SVG描画エンジン（クラス内スプレッドシート型直接入力対応）
  **************************************************************/
+let pendingFocusSelector = null; // Enter連続追加時に次の入力欄へ自動フォーカスするためのセレクタ
+
+function updateTypeSuggestionsDatalist() {
+  const dl = document.getElementById('type-suggestions');
+  if (!dl) return;
+  const baseTypes = ['int', 'float', 'bool', 'string', 'void', 'double', 'Vector2', 'Vector3', 'GameObject', 'Transform', 'List<int>', 'List<string>', 'Dictionary<string, int>'];
+  const clsLayer = projectData.layers[CLASS_LAYER_ID];
+  const classNames = clsLayer ? clsLayer.nodes.filter(n => n.type === 'class' && n.text).map(n => n.text.trim()) : [];
+  const all = [...new Set([...baseTypes, ...classNames])];
+  dl.innerHTML = all.map(t => `<option value="${t}"></option>`).join('');
+}
+
 function render() {
   ensureProjectStructure(projectData);
   const layer = currentLayer();
@@ -8,6 +20,7 @@ function render() {
 
   ensureParentProxyNode(layer);
   updateModeUI();
+  updateTypeSuggestionsDatalist();
 
   layer.nodes.forEach(n => {
     if (n.type === 'memo' && n.parentObjectType === 'edge' && n.parentObjectId) {
@@ -79,7 +92,7 @@ function render() {
       uiLayer.appendChild(line);
 
       if (mode === 'quickCreate') {
-        const defaultW = isClassMode() ? 264 : 192;
+        const defaultW = isClassMode() ? 276 : 192;
         const defaultH = isClassMode() ? 192 : 84;
         const ghostPos = computeNewNodePosFromCursor(activeConnect.currentX, activeConnect.currentY, activeConnect.sourcePort, defaultW, defaultH);
         const ghost = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
@@ -112,6 +125,16 @@ function render() {
 
   updatePropertyPanel();
   updateMiniToolbarPosition();
+
+  // Enter連続追加などで指定された入力欄があれば即座にフォーカス＆全選択
+  if (pendingFocusSelector) {
+    const targetInput = document.querySelector(pendingFocusSelector);
+    pendingFocusSelector = null;
+    if (targetInput) {
+      targetInput.focus();
+      if (targetInput.select) targetInput.select();
+    }
+  }
 }
 
 function updateModeUI() {
@@ -231,7 +254,7 @@ function createNodeSVG(node) {
     memoTag.textContent = node.parentObjectId ? '📎 子メモ (仕様)' : '📝 メモ';
     g.appendChild(memoTag);
   } else if (isClass) {
-    // UML クラスノード（キャンバス上のGUIで変数・関数の直接追加・編集が可能）
+    // UML クラスノード（クリック1回で即入力・Enterで次行連続追加できるスプレッドシート型UI）
     const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
     rect.setAttribute('width', node.width);
     rect.setAttribute('height', node.height);
@@ -243,7 +266,7 @@ function createNodeSVG(node) {
 
     const headerBg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
     headerBg.setAttribute('width', node.width);
-    headerBg.setAttribute('height', 32);
+    headerBg.setAttribute('height', 34);
     headerBg.setAttribute('rx', 6);
     headerBg.setAttribute('fill', '#7c3aed');
     g.appendChild(headerBg);
@@ -264,20 +287,67 @@ function createNodeSVG(node) {
     wrapper.style.fontSize = `${node.fontSize || 13}px`;
     wrapper.style.color = '#1e293b';
 
-    // クラス名ヘッダー
+    // クラス名ヘッダー（直接クリック編集 input ＋ 右上に「＋子クラス」派生ボタン）
     const titleDiv = document.createElement('div');
-    titleDiv.style.height = '32px';
+    titleDiv.style.height = '34px';
     titleDiv.style.display = 'flex';
     titleDiv.style.alignItems = 'center';
-    titleDiv.style.justifyContent = 'center';
-    titleDiv.style.paddingLeft = locked ? '30px' : '8px';
-    titleDiv.style.paddingRight = '8px';
-    titleDiv.style.fontWeight = '700';
-    titleDiv.style.color = '#ffffff';
-    titleDiv.textContent = (editingNodeId === node.id && !editingMemberSpec) ? '' : `🧩 ${node.text || 'ClassName'}`;
+    titleDiv.style.justifyContent = 'space-between';
+    titleDiv.style.paddingLeft = locked ? '32px' : '8px';
+    titleDiv.style.paddingRight = '6px';
+
+    const titleLeft = document.createElement('div');
+    titleLeft.style.display = 'flex';
+    titleLeft.style.alignItems = 'center';
+    titleLeft.style.gap = '4px';
+    titleLeft.style.flex = '1';
+    titleLeft.innerHTML = `<span style="font-size:12px;">🧩</span>`;
+
+    const titleInput = document.createElement('input');
+    titleInput.type = 'text';
+    titleInput.className = 'cls-title-input';
+    titleInput.setAttribute('data-cls-title', node.id);
+    titleInput.value = node.text || 'ClassName';
+    titleInput.disabled = locked;
+    titleInput.title = 'クリックしてクラス名を直接変更 (Enterで変数追加へ)';
+    titleInput.addEventListener('mousedown', (ev) => {
+      ev.stopPropagation();
+      if (!selectedNodeIds.has(node.id)) {
+        selectedNodeIds.clear();
+        selectedNodeIds.add(node.id);
+        updatePropertyPanel();
+      }
+    });
+    titleInput.addEventListener('change', (ev) => {
+      recordHistory();
+      node.text = ev.target.value.trim() || 'ClassName';
+      render();
+    });
+    titleInput.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter') {
+        ev.preventDefault();
+        node.text = titleInput.value.trim() || 'ClassName';
+        quickAddClassMemberOnCanvas(node, 'field');
+      }
+    });
+    titleLeft.appendChild(titleInput);
+    titleDiv.appendChild(titleLeft);
+
+    if (!locked) {
+      const subBtn = document.createElement('button');
+      subBtn.className = 'cls-sub-spawn-btn';
+      subBtn.textContent = '＋子クラス';
+      subBtn.title = 'このクラスを継承する子クラスを下に自動生成します';
+      subBtn.addEventListener('mousedown', (ev) => ev.stopPropagation());
+      subBtn.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        spawnChildClassFromParent(node);
+      });
+      titleDiv.appendChild(subBtn);
+    }
     wrapper.appendChild(titleDiv);
 
-    // --- メンバ変数セクション（GUI「＋変数」ボタン付き） ---
+    // --- メンバ変数セクション ---
     const fieldHeader = document.createElement('div');
     fieldHeader.className = 'cls-gui-section-header';
     fieldHeader.innerHTML = `<span>フィールド (変数)</span>`;
@@ -285,7 +355,6 @@ function createNodeSVG(node) {
       const addFBtn = document.createElement('button');
       addFBtn.className = 'cls-gui-add-btn';
       addFBtn.textContent = '＋ 変数';
-      addFBtn.title = 'クリックして変数を追加';
       addFBtn.addEventListener('mousedown', (ev) => ev.stopPropagation());
       addFBtn.addEventListener('click', (ev) => {
         ev.stopPropagation();
@@ -296,7 +365,7 @@ function createNodeSVG(node) {
     wrapper.appendChild(fieldHeader);
 
     const fieldsDiv = document.createElement('div');
-    fieldsDiv.style.padding = '3px 6px 6px 6px';
+    fieldsDiv.style.padding = '3px 5px 5px 5px';
     fieldsDiv.style.borderBottom = '1.5px solid #a78bfa';
     fieldsDiv.style.minHeight = '26px';
     if (!node.fields || node.fields.length === 0) {
@@ -304,7 +373,16 @@ function createNodeSVG(node) {
       emptyF.style.color = '#64748b';
       emptyF.style.fontSize = '11px';
       emptyF.style.padding = '2px 4px';
-      emptyF.textContent = '(＋変数ボタンで追加)';
+      emptyF.style.cursor = 'pointer';
+      emptyF.style.pointerEvents = 'auto';
+      emptyF.textContent = '＋ クリックして変数を追加...';
+      if (!locked) {
+        emptyF.addEventListener('mousedown', (ev) => ev.stopPropagation());
+        emptyF.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          quickAddClassMemberOnCanvas(node, 'field');
+        });
+      }
       fieldsDiv.appendChild(emptyF);
     } else {
       node.fields.forEach(f => {
@@ -313,7 +391,7 @@ function createNodeSVG(node) {
     }
     wrapper.appendChild(fieldsDiv);
 
-    // --- 関数（メソッド）セクション（GUI「＋関数」ボタン付き） ---
+    // --- 関数（メソッド）セクション ---
     const methodHeader = document.createElement('div');
     methodHeader.className = 'cls-gui-section-header';
     methodHeader.innerHTML = `<span>メソッド (関数)</span>`;
@@ -321,7 +399,6 @@ function createNodeSVG(node) {
       const addMBtn = document.createElement('button');
       addMBtn.className = 'cls-gui-add-btn';
       addMBtn.textContent = '＋ 関数';
-      addMBtn.title = 'クリックして関数を追加';
       addMBtn.addEventListener('mousedown', (ev) => ev.stopPropagation());
       addMBtn.addEventListener('click', (ev) => {
         ev.stopPropagation();
@@ -332,14 +409,23 @@ function createNodeSVG(node) {
     wrapper.appendChild(methodHeader);
 
     const methodsDiv = document.createElement('div');
-    methodsDiv.style.padding = '3px 6px 6px 6px';
+    methodsDiv.style.padding = '3px 5px 5px 5px';
     methodsDiv.style.flex = '1';
     if (!node.methods || node.methods.length === 0) {
       const emptyM = document.createElement('div');
       emptyM.style.color = '#64748b';
       emptyM.style.fontSize = '11px';
       emptyM.style.padding = '2px 4px';
-      emptyM.textContent = '(＋関数ボタンで追加)';
+      emptyM.style.cursor = 'pointer';
+      emptyM.style.pointerEvents = 'auto';
+      emptyM.textContent = '＋ クリックして関数を追加...';
+      if (!locked) {
+        emptyM.addEventListener('mousedown', (ev) => ev.stopPropagation());
+        emptyM.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          quickAddClassMemberOnCanvas(node, 'method');
+        });
+      }
       methodsDiv.appendChild(emptyM);
     } else {
       node.methods.forEach(m => {
@@ -633,7 +719,7 @@ function createNodeSVG(node) {
   return g;
 }
 
-// クラスノード内の各変数・関数行のインタラクティブDOM生成
+// クラスノード内の各変数・関数行：クリックするだけで直接入力・Tab移動・Enterで次行追加できるDOM
 function createClassMemberRowDOM(classNode, member, kind, locked) {
   const isMethod = (kind === 'method');
   normalizeClassMember(member, isMethod);
@@ -644,11 +730,11 @@ function createClassMemberRowDOM(classNode, member, kind, locked) {
     row.classList.add('method-highlight');
   }
 
-  // 1. アクセス修飾子バッジ (+ / - / #) クリックで切り替え
+  // 1. アクセス修飾子バッジ (+ / - / #) ワンクリック切替
   const accBtn = document.createElement('span');
   accBtn.className = 'cls-gui-access-btn';
   accBtn.textContent = ACCESS_SYMBOLS[member.access] || '+';
-  accBtn.title = `アクセス修飾子: ${member.access} (クリックで切替)`;
+  accBtn.title = `アクセス修飾子: ${member.access} (クリックで + / - / # 切替)`;
   if (!locked) {
     accBtn.addEventListener('mousedown', (ev) => ev.stopPropagation());
     accBtn.addEventListener('click', (ev) => {
@@ -662,29 +748,137 @@ function createClassMemberRowDOM(classNode, member, kind, locked) {
   }
   row.appendChild(accBtn);
 
-  // 2. 名前・型表示（ダブルクリックでその場編集）
-  const txtSpan = document.createElement('span');
-  txtSpan.className = 'cls-gui-member-text';
-  const bodyStr = isMethod
-    ? `${member.memberName}(${member.args || ''}): ${member.returnType || 'void'}`
-    : `${member.memberName}: ${member.dataType || 'int'}`;
-  txtSpan.textContent = bodyStr;
-  txtSpan.title = 'ダブルクリックで直接編集';
+  const selectThisClass = (ev) => {
+    ev.stopPropagation();
+    if (!selectedNodeIds.has(classNode.id)) {
+      selectedNodeIds.clear();
+      selectedNodeIds.add(classNode.id);
+      selectedEdgeId = null;
+      updatePropertyPanel();
+    }
+  };
 
-  if (!locked) {
-    txtSpan.addEventListener('dblclick', (ev) => {
-      ev.stopPropagation();
-      startInlineEditClassMember(classNode, kind, member, row);
+  // 2. 名前入力欄 (変数名 or 関数名)
+  const nameInput = document.createElement('input');
+  nameInput.type = 'text';
+  nameInput.className = 'cls-inline-input cls-inline-name';
+  nameInput.setAttribute('data-member-name', member.id);
+  nameInput.value = member.memberName || '';
+  nameInput.placeholder = isMethod ? '関数名' : '変数名';
+  nameInput.disabled = locked;
+  nameInput.addEventListener('mousedown', selectThisClass);
+  nameInput.addEventListener('change', () => {
+    recordHistory();
+    member.memberName = nameInput.value.trim() || (isMethod ? 'Method' : 'field');
+    member.name = isMethod ? formatClassMethod(member) : formatClassField(member);
+    render();
+  });
+
+  if (isMethod) {
+    // 関数の場合： name ( args ) : returnType
+    const lp = document.createElement('span');
+    lp.className = 'cls-sep';
+    lp.textContent = '(';
+
+    const argsInput = document.createElement('input');
+    argsInput.type = 'text';
+    argsInput.className = 'cls-inline-input cls-inline-args';
+    argsInput.value = member.args || '';
+    argsInput.placeholder = '引数';
+    argsInput.title = '引数 (例: power: int)';
+    argsInput.disabled = locked;
+    argsInput.addEventListener('mousedown', selectThisClass);
+    argsInput.addEventListener('change', () => {
+      recordHistory();
+      member.args = argsInput.value.trim();
+      member.name = formatClassMethod(member);
+      render();
     });
+
+    const rp = document.createElement('span');
+    rp.className = 'cls-sep';
+    rp.textContent = '):';
+
+    const typeInput = document.createElement('input');
+    typeInput.type = 'text';
+    typeInput.className = 'cls-inline-input cls-inline-type';
+    typeInput.setAttribute('list', 'type-suggestions');
+    typeInput.value = member.returnType || 'void';
+    typeInput.placeholder = '戻り値型';
+    typeInput.disabled = locked;
+    typeInput.addEventListener('mousedown', selectThisClass);
+    typeInput.addEventListener('change', () => {
+      recordHistory();
+      member.returnType = typeInput.value.trim() || 'void';
+      member.name = formatClassMethod(member);
+      render();
+    });
+
+    // Enterキーで次の関数を連続追加
+    const handleMethodEnter = (ev) => {
+      if (ev.key === 'Enter') {
+        ev.preventDefault();
+        member.memberName = nameInput.value.trim() || 'Method';
+        member.args = argsInput.value.trim();
+        member.returnType = typeInput.value.trim() || 'void';
+        member.name = formatClassMethod(member);
+        quickAddClassMemberOnCanvas(classNode, 'method');
+      }
+    };
+    nameInput.addEventListener('keydown', handleMethodEnter);
+    argsInput.addEventListener('keydown', handleMethodEnter);
+    typeInput.addEventListener('keydown', handleMethodEnter);
+
+    row.appendChild(nameInput);
+    row.appendChild(lp);
+    row.appendChild(argsInput);
+    row.appendChild(rp);
+    row.appendChild(typeInput);
+  } else {
+    // 変数の場合： name : dataType
+    const colon = document.createElement('span');
+    colon.className = 'cls-sep';
+    colon.textContent = ':';
+
+    const typeInput = document.createElement('input');
+    typeInput.type = 'text';
+    typeInput.className = 'cls-inline-input cls-inline-type';
+    typeInput.setAttribute('list', 'type-suggestions');
+    typeInput.value = member.dataType || 'int';
+    typeInput.placeholder = '型';
+    typeInput.disabled = locked;
+    typeInput.addEventListener('mousedown', selectThisClass);
+    typeInput.addEventListener('change', () => {
+      recordHistory();
+      member.dataType = typeInput.value.trim() || 'int';
+      member.name = formatClassField(member);
+      render();
+    });
+
+    // Enterキーで次の変数を連続追加、Backspace空欄で削除
+    const handleFieldKey = (ev) => {
+      if (ev.key === 'Enter') {
+        ev.preventDefault();
+        member.memberName = nameInput.value.trim() || 'field';
+        member.dataType = typeInput.value.trim() || 'int';
+        member.name = formatClassField(member);
+        quickAddClassMemberOnCanvas(classNode, 'field');
+      }
+    };
+    nameInput.addEventListener('keydown', handleFieldKey);
+    typeInput.addEventListener('keydown', handleFieldKey);
+
+    row.appendChild(nameInput);
+    row.appendChild(colon);
+    row.appendChild(typeInput);
   }
-  row.appendChild(txtSpan);
 
   // 3. 削除ボタン (✕)
   if (!locked) {
     const delBtn = document.createElement('button');
     delBtn.className = 'cls-gui-del-btn';
     delBtn.textContent = '✕';
-    delBtn.title = '削除';
+    delBtn.title = 'この行を削除';
     delBtn.addEventListener('mousedown', (ev) => ev.stopPropagation());
     delBtn.addEventListener('click', (ev) => {
       ev.stopPropagation();
@@ -881,7 +1075,6 @@ function createOuterPortsAndQuickCreateSVG(node) {
   return g;
 }
 
-// 矢印（エッジ）描画（継承の白抜き三角マーカーや破線に対応）
 function createEdgeSVG(edge) {
   const layer = currentLayer();
   const src = layer.nodes.find(n => n.id === edge.source);
@@ -935,9 +1128,7 @@ function createEdgeSVG(edge) {
     g.appendChild(txt);
   }
 
-  // 矢印選択時：キャンバス上で直接「間に生成(＋)」や「継承(▷)切替」ができるクイックボタンを表示
   if (isSelected) {
-    // 1. 間に要素生成ボタン
     const midBtn = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     midBtn.setAttribute('transform', `translate(${mx - 14}, ${my})`);
     midBtn.style.cursor = 'pointer';
@@ -959,10 +1150,6 @@ function createEdgeSVG(edge) {
     plus.textContent = '+';
     midBtn.appendChild(plus);
 
-    const title1 = document.createElementNS('http://www.w3.org/2000/svg', 'title');
-    title1.textContent = 'この矢印の間に要素を挿入';
-    midBtn.appendChild(title1);
-
     midBtn.addEventListener('mousedown', (ev) => ev.stopPropagation());
     midBtn.addEventListener('click', (ev) => {
       ev.stopPropagation();
@@ -970,7 +1157,6 @@ function createEdgeSVG(edge) {
     });
     g.appendChild(midBtn);
 
-    // 2. 継承矢印 (▷) ワンクリック切替ボタン
     const relBtn = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     relBtn.setAttribute('transform', `translate(${mx + 14}, ${my})`);
     relBtn.style.cursor = 'pointer';
@@ -991,10 +1177,6 @@ function createEdgeSVG(edge) {
     rTxt.setAttribute('font-weight', 'bold');
     rTxt.textContent = '▷';
     relBtn.appendChild(rTxt);
-
-    const title2 = document.createElementNS('http://www.w3.org/2000/svg', 'title');
-    title2.textContent = 'クリックで「継承 (▷ 白抜き矢印)」と「通常矢印」を切替';
-    relBtn.appendChild(title2);
 
     relBtn.addEventListener('mousedown', (ev) => ev.stopPropagation());
     relBtn.addEventListener('click', (ev) => {
@@ -1065,7 +1247,7 @@ function renderBreadcrumbs() {
   if (isClassMode()) {
     const sp = document.createElement('span');
     sp.className = 'crumb active';
-    sp.textContent = '🧩 クラス図キャンバス (クラス内の「＋変数」「＋関数」で直接追加・継承構築可能)';
+    sp.textContent = '🧩 クラス図 (文字クリックで直接入力 / Enterで連続追加 / 右パネルでテキスト一括編集)';
     container.appendChild(sp);
     return;
   }

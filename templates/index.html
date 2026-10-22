@@ -8,6 +8,20 @@
 </head>
 <body>
 
+  <!-- クラス図の型入力オートコンプリート候補 -->
+  <datalist id="type-suggestions">
+    <option value="int"></option>
+    <option value="float"></option>
+    <option value="bool"></option>
+    <option value="string"></option>
+    <option value="void"></option>
+    <option value="Vector2"></option>
+    <option value="Vector3"></option>
+    <option value="GameObject"></option>
+    <option value="Transform"></option>
+    <option value="List<int>"></option>
+  </datalist>
+
   <!-- Header -->
   <header>
     <div class="header-left">
@@ -48,7 +62,7 @@
   <div class="subbar">
     <div class="breadcrumbs" id="breadcrumbs"></div>
     <div class="hint-text">
-      【操作】クラス内「＋変数 / ＋関数」：GUI上で直接追加・ダブルクリック編集 ｜ 矢印選択：継承(▷)切替 ｜ Ctrl+S：保存
+      【操作】クラス内の文字クリックで直接入力 ｜ Enter：次の変数/関数を連続追加 ｜ Tab：型へ移動 ｜ 右パネルでテキスト一括編集可
     </div>
   </div>
 
@@ -70,7 +84,7 @@
         </div>
       </div>
 
-      <!-- タグ管理（名前＆色の編集・データベース保存対応） -->
+      <!-- タグ管理 -->
       <div class="panel-section">
         <div class="panel-title">🏷️ タグ管理 (名前・色編集)</div>
         <div style="display:flex; gap:5px; margin-bottom:8px;">
@@ -99,7 +113,6 @@
           <pattern id="grid-pattern" width="24" height="24" patternUnits="userSpaceOnUse">
             <circle cx="2" cy="2" r="1.3" fill="#cbd5e1"></circle>
           </pattern>
-          <!-- 通常矢印 -->
           <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
             <polygon points="0 0, 10 3.5, 0 7" fill="#475569"></polygon>
           </marker>
@@ -109,7 +122,6 @@
           <marker id="arrowhead-create" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
             <polygon points="0 0, 10 3.5, 0 7" fill="#10b981"></polygon>
           </marker>
-          <!-- クラス図：継承（白抜き三角矢印）マーカー -->
           <marker id="arrowhead-inheritance" markerWidth="14" markerHeight="12" refX="13" refY="6" orient="auto">
             <polygon points="0 1, 13 6, 0 11" fill="#f8fafc" stroke="#475569" stroke-width="1.8"></polygon>
           </marker>
@@ -202,57 +214,88 @@
           </div>
 
           <div class="form-group" id="prop-text-group">
-            <label id="prop-text-label">テキスト / 名前 (ダブルクリックでも編集可)</label>
+            <label id="prop-text-label">テキスト / 名前</label>
             <textarea id="prop-text" class="form-control" rows="2" placeholder="テキストを入力..."></textarea>
           </div>
 
-          <!-- クラスノード専用：継承先（親クラス）のワンクリック設定 ＋ メンバ変数・関数編集 -->
+          <!-- クラスノード専用：爆速テキスト一括編集 ＆ 継承設定 ＆ コード出力 -->
           <div class="sub-box" id="prop-class-box" style="display:none;">
-            <label style="font-size:11px; color:#c4b5fd; font-weight:700; display:block; margin-bottom:6px;">
-              🧬 親クラス（継承元 Base Class）の指定
-            </label>
-            <select id="prop-class-extends" class="form-control" style="margin-bottom:10px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+              <label style="font-size:11px; color:#c4b5fd; font-weight:700;">
+                🧬 親クラス（継承元 Base Class）
+              </label>
+              <button type="button" class="btn btn-purple" id="btn-spawn-child-class" style="padding:2px 8px; font-size:11px;" title="このクラスを継承する子クラスを下に自動生成">
+                ＋ 子クラスを派生
+              </button>
+            </div>
+            <select id="prop-class-extends" class="form-control" style="margin-bottom:12px;">
               <option value="">（継承なし）</option>
             </select>
 
-            <label style="font-size:11px; color:#c4b5fd; font-weight:700; display:block; margin-bottom:6px;">
-              🧩 変数・関数リスト（キャンバス上でも直接追加・編集できます）
-            </label>
-
-            <!-- メンバ変数追加 -->
-            <div class="form-group">
-              <label>メンバ変数 / フィールド</label>
-              <div class="struct-input-row">
-                <select id="new-field-access" class="form-control struct-access" title="アクセス修飾子">
-                  <option value="public">+ public</option>
-                  <option value="private">- private</option>
-                  <option value="protected"># protected</option>
-                </select>
-                <input type="text" id="new-field-name" class="form-control" placeholder="変数名 (hp)">
-                <input type="text" id="new-field-type" class="form-control" placeholder="型 (int)">
-                <button class="btn btn-primary" id="btn-add-class-field" style="padding:5px 8px;">＋</button>
+            <!-- Mermaid / draw.io 風のテキスト一括編集モード -->
+            <div style="margin-bottom:12px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                <label style="font-size:11px; color:#fde047; font-weight:700;">
+                  ⚡ テキストで一括編集 (Mermaid / draw.io 方式)
+                </label>
+                <span style="font-size:10px; color:var(--text-sub);">※()があれば関数になります</span>
               </div>
-              <div id="class-field-list" class="member-edit-list"></div>
+              <textarea id="prop-class-bulk-text" class="form-control bulk-class-editor" rows="7" placeholder="ClassName&#10;---&#10;- hp: int&#10;+ speed: float&#10;---&#10;+ Attack(power: int): void"></textarea>
+              <div style="font-size:10px; color:var(--text-sub); margin-top:4px; line-height:1.4;">
+                行頭に <code>+</code>(public) <code>-</code>(private) <code>#</code>(protected) を記述。キャンバス上のクラス内を直接クリックして <code>Enter</code> でも連続追加できます。
+              </div>
             </div>
 
-            <!-- 関数 / メソッド追加 -->
-            <div class="form-group" style="margin-bottom:0;">
-              <label>関数 / メソッド (リンク参照可能)</label>
-              <div class="struct-input-row" style="margin-bottom:4px;">
-                <select id="new-method-access" class="form-control struct-access" title="アクセス修飾子">
-                  <option value="public">+ public</option>
-                  <option value="private">- private</option>
-                  <option value="protected"># protected</option>
-                </select>
-                <input type="text" id="new-method-name" class="form-control" placeholder="関数名 (Attack)">
-                <input type="text" id="new-method-type" class="form-control" placeholder="型 (void)">
-              </div>
-              <div style="display:flex; gap:4px; margin-bottom:6px;">
-                <input type="text" id="new-method-args" class="form-control" placeholder="引数 (省略可 例: power: int)">
-                <button class="btn btn-purple" id="btn-add-class-method" style="padding:5px 10px;">＋</button>
-              </div>
-              <div id="class-method-list" class="member-edit-list"></div>
+            <!-- C# / C++ コード自動生成コピー -->
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:10px;">
+              <button type="button" class="btn" id="btn-export-csharp" style="justify-content:center; font-size:11px;">
+                💻 C# コードをコピー
+              </button>
+              <button type="button" class="btn" id="btn-export-cpp" style="justify-content:center; font-size:11px;">
+                💻 C++ (.h) をコピー
+              </button>
             </div>
+
+            <!-- 折りたたみ式の個別フォーム編集 -->
+            <details style="margin-top:4px;">
+              <summary style="font-size:11px; color:#93c5fd; cursor:pointer; font-weight:600; padding:4px 0;">
+                🛠️ 個別フォームで追加・並び替え
+              </summary>
+              <div style="padding-top:8px;">
+                <div class="form-group">
+                  <label>メンバ変数 / フィールド</label>
+                  <div class="struct-input-row">
+                    <select id="new-field-access" class="form-control struct-access">
+                      <option value="public">+ public</option>
+                      <option value="private" selected>- private</option>
+                      <option value="protected"># protected</option>
+                    </select>
+                    <input type="text" id="new-field-name" class="form-control" placeholder="変数名 (hp)">
+                    <input type="text" id="new-field-type" class="form-control" list="type-suggestions" placeholder="型 (int)">
+                    <button class="btn btn-primary" id="btn-add-class-field" style="padding:5px 8px;">＋</button>
+                  </div>
+                  <div id="class-field-list" class="member-edit-list"></div>
+                </div>
+
+                <div class="form-group" style="margin-bottom:0;">
+                  <label>関数 / メソッド</label>
+                  <div class="struct-input-row" style="margin-bottom:4px;">
+                    <select id="new-method-access" class="form-control struct-access">
+                      <option value="public" selected>+ public</option>
+                      <option value="private">- private</option>
+                      <option value="protected"># protected</option>
+                    </select>
+                    <input type="text" id="new-method-name" class="form-control" placeholder="関数名 (Attack)">
+                    <input type="text" id="new-method-type" class="form-control" list="type-suggestions" placeholder="型 (void)">
+                  </div>
+                  <div style="display:flex; gap:4px; margin-bottom:6px;">
+                    <input type="text" id="new-method-args" class="form-control" placeholder="引数 (例: target: ActorBase)">
+                    <button class="btn btn-purple" id="btn-add-class-method" style="padding:5px 10px;">＋</button>
+                  </div>
+                  <div id="class-method-list" class="member-edit-list"></div>
+                </div>
+              </div>
+            </details>
           </div>
 
           <!-- タグ付与セクション -->
@@ -346,7 +389,7 @@
           </button>
         </div>
 
-        <!-- 矢印（エッジ）用プロパティ（継承・実装などの関係種選択に対応） -->
+        <!-- 矢印（エッジ）用プロパティ -->
         <div id="prop-edge" style="display:none;">
           <div class="sub-box">
             <label style="font-size:11px; color:#c4b5fd; font-weight:700; display:block; margin-bottom:6px;">
