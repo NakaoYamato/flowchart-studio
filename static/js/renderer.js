@@ -1,5 +1,5 @@
 /**************************************************************
- * renderer.js : SVG描画エンジン（タグ色塗りつぶし連動・クラス図・ロック非干渉）
+ * renderer.js : SVG描画エンジン（クラスGUI直接追加・継承矢印対応）
  **************************************************************/
 function render() {
   ensureProjectStructure(projectData);
@@ -75,12 +75,12 @@ function render() {
       line.setAttribute('stroke-width', '2.5');
       line.setAttribute('stroke-dasharray', '6,4');
       line.setAttribute('fill', 'none');
-      line.setAttribute('marker-end', mode === 'quickCreate' ? 'url(#arrowhead-create)' : 'url(#arrowhead-selected)');
+      line.setAttribute('marker-end', isClassMode() ? 'url(#arrowhead-inheritance-selected)' : (mode === 'quickCreate' ? 'url(#arrowhead-create)' : 'url(#arrowhead-selected)'));
       uiLayer.appendChild(line);
 
       if (mode === 'quickCreate') {
-        const defaultW = isClassMode() ? 252 : 192;
-        const defaultH = isClassMode() ? 176 : 84;
+        const defaultW = isClassMode() ? 264 : 192;
+        const defaultH = isClassMode() ? 192 : 84;
         const ghostPos = computeNewNodePosFromCursor(activeConnect.currentX, activeConnect.currentY, activeConnect.sourcePort, defaultW, defaultH);
         const ghost = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
         ghost.setAttribute('x', ghostPos.x);
@@ -176,7 +176,7 @@ function createNodeSVG(node) {
   hoverPad.setAttribute('fill', 'transparent');
   g.appendChild(hoverPad);
 
-  // 1. 単一タグピル表示（上部にタグ名を表示）
+  // 1. 単一タグピル表示
   if (activeTag) {
     const pillW = Math.max(48, activeTag.name.length * 11 + 18);
     const pillG = document.createElementNS('http://www.w3.org/2000/svg', 'g');
@@ -204,7 +204,7 @@ function createNodeSVG(node) {
     g.appendChild(pillG);
   }
 
-  // 2. 本体描画（塗りつぶし色は getEffectiveNodeColor(node) を使用）
+  // 2. 本体描画
   if (isMemo) {
     const fold = 16;
     const w = node.width, h = node.height;
@@ -231,6 +231,7 @@ function createNodeSVG(node) {
     memoTag.textContent = node.parentObjectId ? '📎 子メモ (仕様)' : '📝 メモ';
     g.appendChild(memoTag);
   } else if (isClass) {
+    // UML クラスノード（キャンバス上のGUIで変数・関数の直接追加・編集が可能）
     const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
     rect.setAttribute('width', node.width);
     rect.setAttribute('height', node.height);
@@ -263,6 +264,7 @@ function createNodeSVG(node) {
     wrapper.style.fontSize = `${node.fontSize || 13}px`;
     wrapper.style.color = '#1e293b';
 
+    // クラス名ヘッダー
     const titleDiv = document.createElement('div');
     titleDiv.style.height = '32px';
     titleDiv.style.display = 'flex';
@@ -272,53 +274,76 @@ function createNodeSVG(node) {
     titleDiv.style.paddingRight = '8px';
     titleDiv.style.fontWeight = '700';
     titleDiv.style.color = '#ffffff';
-    titleDiv.textContent = editingNodeId === node.id ? '' : `🧩 ${node.text || 'ClassName'}`;
+    titleDiv.textContent = (editingNodeId === node.id && !editingMemberSpec) ? '' : `🧩 ${node.text || 'ClassName'}`;
     wrapper.appendChild(titleDiv);
 
+    // --- メンバ変数セクション（GUI「＋変数」ボタン付き） ---
+    const fieldHeader = document.createElement('div');
+    fieldHeader.className = 'cls-gui-section-header';
+    fieldHeader.innerHTML = `<span>フィールド (変数)</span>`;
+    if (!locked) {
+      const addFBtn = document.createElement('button');
+      addFBtn.className = 'cls-gui-add-btn';
+      addFBtn.textContent = '＋ 変数';
+      addFBtn.title = 'クリックして変数を追加';
+      addFBtn.addEventListener('mousedown', (ev) => ev.stopPropagation());
+      addFBtn.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        quickAddClassMemberOnCanvas(node, 'field');
+      });
+      fieldHeader.appendChild(addFBtn);
+    }
+    wrapper.appendChild(fieldHeader);
+
     const fieldsDiv = document.createElement('div');
-    fieldsDiv.style.padding = '6px 10px';
+    fieldsDiv.style.padding = '3px 6px 6px 6px';
     fieldsDiv.style.borderBottom = '1.5px solid #a78bfa';
-    fieldsDiv.style.minHeight = '28px';
+    fieldsDiv.style.minHeight = '26px';
     if (!node.fields || node.fields.length === 0) {
       const emptyF = document.createElement('div');
       emptyF.style.color = '#64748b';
       emptyF.style.fontSize = '11px';
-      emptyF.textContent = '(変数なし)';
+      emptyF.style.padding = '2px 4px';
+      emptyF.textContent = '(＋変数ボタンで追加)';
       fieldsDiv.appendChild(emptyF);
     } else {
       node.fields.forEach(f => {
-        const row = document.createElement('div');
-        row.style.padding = '1px 2px';
-        row.style.whiteSpace = 'nowrap';
-        row.style.overflow = 'hidden';
-        row.style.textOverflow = 'ellipsis';
-        row.textContent = formatClassField(f);
-        fieldsDiv.appendChild(row);
+        fieldsDiv.appendChild(createClassMemberRowDOM(node, f, 'field', locked));
       });
     }
     wrapper.appendChild(fieldsDiv);
 
+    // --- 関数（メソッド）セクション（GUI「＋関数」ボタン付き） ---
+    const methodHeader = document.createElement('div');
+    methodHeader.className = 'cls-gui-section-header';
+    methodHeader.innerHTML = `<span>メソッド (関数)</span>`;
+    if (!locked) {
+      const addMBtn = document.createElement('button');
+      addMBtn.className = 'cls-gui-add-btn';
+      addMBtn.textContent = '＋ 関数';
+      addMBtn.title = 'クリックして関数を追加';
+      addMBtn.addEventListener('mousedown', (ev) => ev.stopPropagation());
+      addMBtn.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        quickAddClassMemberOnCanvas(node, 'method');
+      });
+      methodHeader.appendChild(addMBtn);
+    }
+    wrapper.appendChild(methodHeader);
+
     const methodsDiv = document.createElement('div');
-    methodsDiv.style.padding = '6px 10px';
+    methodsDiv.style.padding = '3px 6px 6px 6px';
     methodsDiv.style.flex = '1';
     if (!node.methods || node.methods.length === 0) {
       const emptyM = document.createElement('div');
       emptyM.style.color = '#64748b';
       emptyM.style.fontSize = '11px';
-      emptyM.textContent = '(関数なし)';
+      emptyM.style.padding = '2px 4px';
+      emptyM.textContent = '(＋関数ボタンで追加)';
       methodsDiv.appendChild(emptyM);
     } else {
       node.methods.forEach(m => {
-        const row = document.createElement('div');
-        row.style.padding = '2px 4px';
-        row.style.whiteSpace = 'nowrap';
-        row.style.overflow = 'hidden';
-        row.style.textOverflow = 'ellipsis';
-        if (highlightedMethodId === m.id) {
-          row.className = 'method-highlight';
-        }
-        row.textContent = `⚡ ${formatClassMethod(m)}`;
-        methodsDiv.appendChild(row);
+        methodsDiv.appendChild(createClassMemberRowDOM(node, m, 'method', locked));
       });
     }
     wrapper.appendChild(methodsDiv);
@@ -373,7 +398,7 @@ function createNodeSVG(node) {
     }
   }
 
-  // 3. テキスト表示
+  // 3. テキスト表示（クラスノード以外）
   if (!isClass) {
     const fo = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
     const leftPad = (isContainer && locked) ? 34 : 8;
@@ -608,6 +633,75 @@ function createNodeSVG(node) {
   return g;
 }
 
+// クラスノード内の各変数・関数行のインタラクティブDOM生成
+function createClassMemberRowDOM(classNode, member, kind, locked) {
+  const isMethod = (kind === 'method');
+  normalizeClassMember(member, isMethod);
+
+  const row = document.createElement('div');
+  row.className = 'cls-gui-member-row';
+  if (isMethod && highlightedMethodId === member.id) {
+    row.classList.add('method-highlight');
+  }
+
+  // 1. アクセス修飾子バッジ (+ / - / #) クリックで切り替え
+  const accBtn = document.createElement('span');
+  accBtn.className = 'cls-gui-access-btn';
+  accBtn.textContent = ACCESS_SYMBOLS[member.access] || '+';
+  accBtn.title = `アクセス修飾子: ${member.access} (クリックで切替)`;
+  if (!locked) {
+    accBtn.addEventListener('mousedown', (ev) => ev.stopPropagation());
+    accBtn.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      recordHistory();
+      const idx = ACCESS_ORDER.indexOf(member.access || 'public');
+      member.access = ACCESS_ORDER[(idx + 1) % ACCESS_ORDER.length];
+      member.name = isMethod ? formatClassMethod(member) : formatClassField(member);
+      render();
+    });
+  }
+  row.appendChild(accBtn);
+
+  // 2. 名前・型表示（ダブルクリックでその場編集）
+  const txtSpan = document.createElement('span');
+  txtSpan.className = 'cls-gui-member-text';
+  const bodyStr = isMethod
+    ? `${member.memberName}(${member.args || ''}): ${member.returnType || 'void'}`
+    : `${member.memberName}: ${member.dataType || 'int'}`;
+  txtSpan.textContent = bodyStr;
+  txtSpan.title = 'ダブルクリックで直接編集';
+
+  if (!locked) {
+    txtSpan.addEventListener('dblclick', (ev) => {
+      ev.stopPropagation();
+      startInlineEditClassMember(classNode, kind, member, row);
+    });
+  }
+  row.appendChild(txtSpan);
+
+  // 3. 削除ボタン (✕)
+  if (!locked) {
+    const delBtn = document.createElement('button');
+    delBtn.className = 'cls-gui-del-btn';
+    delBtn.textContent = '✕';
+    delBtn.title = '削除';
+    delBtn.addEventListener('mousedown', (ev) => ev.stopPropagation());
+    delBtn.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      recordHistory();
+      if (isMethod) {
+        classNode.methods = (classNode.methods || []).filter(m => m.id !== member.id);
+      } else {
+        classNode.fields = (classNode.fields || []).filter(f => f.id !== member.id);
+      }
+      render();
+    });
+    row.appendChild(delBtn);
+  }
+
+  return row;
+}
+
 function jumpToLinkedNode(targetNodeId, targetMethodId = null) {
   const found = findNodeAcrossProject(targetNodeId);
   if (!found) {
@@ -787,6 +881,7 @@ function createOuterPortsAndQuickCreateSVG(node) {
   return g;
 }
 
+// 矢印（エッジ）描画（継承の白抜き三角マーカーや破線に対応）
 function createEdgeSVG(edge) {
   const layer = currentLayer();
   const src = layer.nodes.find(n => n.id === edge.source);
@@ -797,6 +892,9 @@ function createEdgeSVG(edge) {
   const p2 = getPortCoords(tgt, edge.targetPort);
   const d = computeCurvePath(p1.x, p1.y, p2.x, p2.y, edge.sourcePort, edge.targetPort);
   const isSelected = selectedEdgeId === edge.id;
+  const relType = edge.relationType || 'normal';
+  const isInherit = (relType === 'inheritance' || relType === 'implementation');
+  const isDashed = (relType === 'implementation' || relType === 'dependency');
 
   const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
   g.style.cursor = 'pointer';
@@ -804,16 +902,22 @@ function createEdgeSVG(edge) {
   const hit = document.createElementNS('http://www.w3.org/2000/svg', 'path');
   hit.setAttribute('d', d);
   hit.setAttribute('stroke', 'transparent');
-  hit.setAttribute('stroke-width', '20');
+  hit.setAttribute('stroke-width', '22');
   hit.setAttribute('fill', 'none');
   g.appendChild(hit);
 
   const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
   path.setAttribute('d', d);
   path.setAttribute('stroke', isSelected ? '#3b82f6' : (edge.color || '#475569'));
-  path.setAttribute('stroke-width', isSelected ? '3' : '2');
+  path.setAttribute('stroke-width', isSelected ? '3' : '2.2');
+  if (isDashed) path.setAttribute('stroke-dasharray', '6,4');
   path.setAttribute('fill', 'none');
-  path.setAttribute('marker-end', isSelected ? 'url(#arrowhead-selected)' : 'url(#arrowhead)');
+
+  let markerUrl = isSelected ? 'url(#arrowhead-selected)' : 'url(#arrowhead)';
+  if (isInherit) {
+    markerUrl = isSelected ? 'url(#arrowhead-inheritance-selected)' : 'url(#arrowhead-inheritance)';
+  }
+  path.setAttribute('marker-end', markerUrl);
   g.appendChild(path);
 
   const mx = (p1.x + p2.x) / 2;
@@ -822,7 +926,7 @@ function createEdgeSVG(edge) {
   if (edge.label) {
     const txt = document.createElementNS('http://www.w3.org/2000/svg', 'text');
     txt.setAttribute('x', mx);
-    txt.setAttribute('y', my - 8);
+    txt.setAttribute('y', my - 10);
     txt.setAttribute('text-anchor', 'middle');
     txt.setAttribute('fill', '#1e293b');
     txt.setAttribute('font-size', '12px');
@@ -831,9 +935,11 @@ function createEdgeSVG(edge) {
     g.appendChild(txt);
   }
 
+  // 矢印選択時：キャンバス上で直接「間に生成(＋)」や「継承(▷)切替」ができるクイックボタンを表示
   if (isSelected) {
+    // 1. 間に要素生成ボタン
     const midBtn = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-    midBtn.setAttribute('transform', `translate(${mx}, ${my})`);
+    midBtn.setAttribute('transform', `translate(${mx - 14}, ${my})`);
     midBtn.style.cursor = 'pointer';
 
     const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
@@ -853,12 +959,52 @@ function createEdgeSVG(edge) {
     plus.textContent = '+';
     midBtn.appendChild(plus);
 
+    const title1 = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+    title1.textContent = 'この矢印の間に要素を挿入';
+    midBtn.appendChild(title1);
+
     midBtn.addEventListener('mousedown', (ev) => ev.stopPropagation());
     midBtn.addEventListener('click', (ev) => {
       ev.stopPropagation();
       insertNodeBetweenEdge(edge.id);
     });
     g.appendChild(midBtn);
+
+    // 2. 継承矢印 (▷) ワンクリック切替ボタン
+    const relBtn = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    relBtn.setAttribute('transform', `translate(${mx + 14}, ${my})`);
+    relBtn.style.cursor = 'pointer';
+
+    const rc = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    rc.setAttribute('r', 10);
+    rc.setAttribute('fill', isInherit ? '#7c3aed' : '#475569');
+    rc.setAttribute('stroke', '#ffffff');
+    rc.setAttribute('stroke-width', '2');
+    relBtn.appendChild(rc);
+
+    const rTxt = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    rTxt.setAttribute('x', 0);
+    rTxt.setAttribute('y', 4);
+    rTxt.setAttribute('text-anchor', 'middle');
+    rTxt.setAttribute('fill', '#ffffff');
+    rTxt.setAttribute('font-size', '10px');
+    rTxt.setAttribute('font-weight', 'bold');
+    rTxt.textContent = '▷';
+    relBtn.appendChild(rTxt);
+
+    const title2 = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+    title2.textContent = 'クリックで「継承 (▷ 白抜き矢印)」と「通常矢印」を切替';
+    relBtn.appendChild(title2);
+
+    relBtn.addEventListener('mousedown', (ev) => ev.stopPropagation());
+    relBtn.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      recordHistory();
+      edge.relationType = (edge.relationType === 'inheritance') ? 'normal' : 'inheritance';
+      render();
+      showToast(edge.relationType === 'inheritance' ? '▷ 継承（extends）矢印に変更しました' : '➔ 通常矢印に変更しました');
+    });
+    g.appendChild(relBtn);
   }
 
   g.addEventListener('mousedown', (ev) => {
@@ -919,7 +1065,7 @@ function renderBreadcrumbs() {
   if (isClassMode()) {
     const sp = document.createElement('span');
     sp.className = 'crumb active';
-    sp.textContent = '🧩 クラス図キャンバス (全階層から参照可能)';
+    sp.textContent = '🧩 クラス図キャンバス (クラス内の「＋変数」「＋関数」で直接追加・継承構築可能)';
     container.appendChild(sp);
     return;
   }

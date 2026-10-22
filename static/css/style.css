@@ -230,12 +230,12 @@ header::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 2px; }
   letter-spacing: 0.5px;
 }
 
-/* タグ管理リスト */
+/* タグ管理リスト（タグ名のインライン編集対応） */
 .tag-manage-list {
   display: flex;
   flex-direction: column;
   gap: 5px;
-  max-height: 150px;
+  max-height: 165px;
   overflow-y: auto;
 }
 .tag-manage-item {
@@ -243,24 +243,35 @@ header::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 2px; }
   align-items: center;
   gap: 6px;
   background: #181a1f;
-  padding: 4px 8px;
+  padding: 4px 6px;
   border-radius: 5px;
   border: 1px solid #333842;
   font-size: 12px;
 }
 .tag-manage-item input[type="color"] {
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   border: none;
   background: none;
   cursor: pointer;
   flex-shrink: 0;
 }
-.tag-manage-name {
+.tag-manage-name-input {
   flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  background: transparent;
+  border: 1px solid transparent;
+  color: #e5e7eb;
+  font-size: 12px;
+  padding: 2px 5px;
+  border-radius: 4px;
+  min-width: 60px;
+  user-select: text;
+}
+.tag-manage-name-input:hover,
+.tag-manage-name-input:focus {
+  background: #21252b;
+  border-color: #4b5563;
+  outline: none;
 }
 
 .node-tag-selector {
@@ -284,7 +295,87 @@ header::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 2px; }
   box-shadow: 0 2px 6px rgba(0,0,0,0.4);
 }
 
-/* クラスメンバ構造化入力＆編集リスト */
+/* キャンバス上のクラスノード内インタラクティブGUI */
+.cls-gui-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 6px;
+  background: rgba(109, 40, 217, 0.1);
+  font-size: 10px;
+  font-weight: 700;
+  color: #5b21b6;
+}
+.cls-gui-add-btn {
+  background: #7c3aed;
+  color: #ffffff;
+  border: none;
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  pointer-events: auto;
+}
+.cls-gui-add-btn:hover {
+  background: #6d28d9;
+}
+.cls-gui-member-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  pointer-events: auto;
+  transition: background 0.12s;
+}
+.cls-gui-member-row:hover {
+  background: rgba(124, 58, 237, 0.14);
+}
+.cls-gui-access-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 17px;
+  height: 17px;
+  border-radius: 4px;
+  font-weight: 700;
+  font-size: 11px;
+  cursor: pointer;
+  flex-shrink: 0;
+  background: rgba(109, 40, 217, 0.18);
+  color: #4c1d95;
+}
+.cls-gui-access-btn:hover {
+  background: #7c3aed;
+  color: #fff;
+}
+.cls-gui-member-text {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: text;
+}
+.cls-gui-del-btn {
+  opacity: 0;
+  background: #ef4444;
+  color: #fff;
+  border: none;
+  border-radius: 3px;
+  width: 16px;
+  height: 16px;
+  font-size: 9px;
+  line-height: 16px;
+  text-align: center;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.cls-gui-member-row:hover .cls-gui-del-btn {
+  opacity: 1;
+}
+
+/* 右パネルのクラスメンバ構造化入力＆編集リスト */
 .struct-input-row {
   display: flex;
   gap: 4px;
@@ -545,14 +636,14 @@ header::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 2px; }
   position: absolute;
   display: none;
   z-index: 45;
-  background: rgba(255, 255, 255, 0.96);
+  background: rgba(255, 255, 255, 0.98);
   color: #111827;
   border: 2px solid var(--accent);
   border-radius: 6px;
   padding: 6px;
   resize: none;
   outline: none;
-  box-shadow: 0 4px 14px rgba(0,0,0,0.2);
+  box-shadow: 0 4px 14px rgba(0,0,0,0.25);
   overflow: hidden;
 }
 

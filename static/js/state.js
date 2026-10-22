@@ -1,5 +1,5 @@
 /**************************************************************
- * state.js : プロジェクトデータ・単一タグ色連動・クラス構造化・逆参照検索
+ * state.js : プロジェクトデータ・クラス継承・GUIメンバ解析・自動リサイズ
  **************************************************************/
 const GRID_SIZE = 24;
 const snapToGrid = (val) => Math.round(val / GRID_SIZE) * GRID_SIZE;
@@ -11,6 +11,7 @@ const ACCESS_SYMBOLS = {
   private: "-",
   protected: "#"
 };
+const ACCESS_ORDER = ["public", "private", "protected"];
 
 function formatClassField(f) {
   const sym = ACCESS_SYMBOLS[f.access] || "+";
@@ -27,41 +28,58 @@ function formatClassMethod(m) {
   return mType ? `${sym} ${mName}(${mArgs}): ${mType}` : `${sym} ${mName}(${mArgs})`;
 }
 
-// 既存の文字列データ（"+ hp: int" など）からも access / memberName / dataType を復元するマイグレーション関数
-function normalizeClassMember(item, isMethod = false) {
-  if (item.memberName !== undefined) {
-    item.name = isMethod ? formatClassMethod(item) : formatClassField(item);
-    return item;
-  }
-  const raw = (item.name || "").trim();
-  let access = "public";
-  let rest = raw;
-  if (rest.startsWith("+")) { access = "public"; rest = rest.slice(1).trim(); }
-  else if (rest.startsWith("-")) { access = "private"; rest = rest.slice(1).trim(); }
-  else if (rest.startsWith("#")) { access = "protected"; rest = rest.slice(1).trim(); }
+// キャンバス上のインライン編集で入力されたテキスト (例: "hp: int" や "Attack(power: int): void") を構造化データに反映する関数
+function parseInlineMemberText(item, rawInput, isMethod = false) {
+  let str = (rawInput || "").trim();
+  if (str.startsWith("+")) { item.access = "public"; str = str.slice(1).trim(); }
+  else if (str.startsWith("-")) { item.access = "private"; str = str.slice(1).trim(); }
+  else if (str.startsWith("#")) { item.access = "protected"; str = str.slice(1).trim(); }
 
   if (isMethod) {
-    const match = rest.match(/^([^\(]+)\(([^\)]*)\)\s*(?::\s*(.*))?$/);
+    const match = str.match(/^([^\(\:]+)(?:\(([^\)]*)\))?\s*(?::\s*(.*))?$/);
     if (match) {
-      item.access = access;
-      item.memberName = match[1].trim();
-      item.args = match[2].trim();
-      item.returnType = (match[3] || "void").trim();
+      item.memberName = (match[1] || "Method").trim();
+      if (match[2] !== undefined) item.args = match[2].trim();
+      if (match[3] !== undefined && match[3].trim() !== "") item.returnType = match[3].trim();
     } else {
-      item.access = access;
-      item.memberName = rest || "Method";
-      item.args = "";
-      item.returnType = "void";
+      item.memberName = str || "Method";
     }
     item.name = formatClassMethod(item);
   } else {
-    const parts = rest.split(":");
-    item.access = access;
-    item.memberName = (parts[0] || "value").trim();
-    item.dataType = (parts.slice(1).join(":") || "int").trim();
+    const parts = str.split(":");
+    item.memberName = (parts[0] || "field").trim();
+    if (parts.length > 1) {
+      item.dataType = parts.slice(1).join(":").trim() || "int";
+    }
     item.name = formatClassField(item);
   }
   return item;
+}
+
+function normalizeClassMember(item, isMethod = false) {
+  if (item.memberName !== undefined) {
+    if (!item.access) item.access = "public";
+    item.name = isMethod ? formatClassMethod(item) : formatClassField(item);
+    return item;
+  }
+  item.access = "public";
+  item.memberName = isMethod ? "Method" : "value";
+  item.args = "";
+  item.returnType = "void";
+  item.dataType = "int";
+  return parseInlineMemberText(item, item.name || "", isMethod);
+}
+
+// クラス内の変数・関数の数に合わせてクラスノードの高さが不足しないよう自動調整
+function autoAdjustClassNodeHeight(node) {
+  if (!node || node.type !== 'class') return;
+  const fCount = Array.isArray(node.fields) ? node.fields.length : 0;
+  const mCount = Array.isArray(node.methods) ? node.methods.length : 0;
+  const requiredH = 36 + 26 + Math.max(1, fCount) * 24 + 26 + Math.max(1, mCount) * 24 + 28;
+  const snappedReq = snapToGrid(requiredH + 12);
+  if (node.height < snappedReq) {
+    node.height = snappedReq;
+  }
 }
 
 function createEmptyProject(projectId) {
@@ -99,25 +117,50 @@ function createEmptyProject(projectId) {
         parentNodeId: null,
         nodes: [
           {
-            id: "cls_sample",
+            id: "cls_base",
             type: "class",
-            text: "GameManager",
-            x: 216, y: 120, width: 252, height: 176,
+            text: "ActorBase",
+            x: 240, y: 48, width: 264, height: 168,
             color: "#f3e8ff", fontSize: 13, fontFamily: "'Consolas', 'Meiryo', monospace",
             textAlign: "left", tags: [],
             fields: [
-              normalizeClassMember({ id: "fld_1", access: "public", memberName: "currentTurn", dataType: "int" }, false),
-              normalizeClassMember({ id: "fld_2", access: "private", memberName: "isPaused", dataType: "bool" }, false)
+              normalizeClassMember({ id: "fld_b1", access: "protected", memberName: "id", dataType: "int" }, false)
             ],
             methods: [
-              normalizeClassMember({ id: "mtd_1", access: "public", memberName: "StartGame", args: "", returnType: "void" }, true),
-              normalizeClassMember({ id: "mtd_2", access: "public", memberName: "NextTurn", args: "", returnType: "void" }, true)
+              normalizeClassMember({ id: "mtd_b1", access: "public", memberName: "Init", args: "", returnType: "void" }, true)
+            ],
+            parentGroupId: null, childLayerId: null, locked: false, isParentProxy: false,
+            linkTargetNodeId: null, linkTargetLayerId: null, linkTargetMethodId: null
+          },
+          {
+            id: "cls_sample",
+            type: "class",
+            text: "PlayerCard",
+            x: 240, y: 288, width: 264, height: 192,
+            color: "#f3e8ff", fontSize: 13, fontFamily: "'Consolas', 'Meiryo', monospace",
+            textAlign: "left", tags: [],
+            fields: [
+              normalizeClassMember({ id: "fld_1", access: "private", memberName: "power", dataType: "int" }, false)
+            ],
+            methods: [
+              normalizeClassMember({ id: "mtd_1", access: "public", memberName: "Attack", args: "target: ActorBase", returnType: "void" }, true)
             ],
             parentGroupId: null, childLayerId: null, locked: false, isParentProxy: false,
             linkTargetNodeId: null, linkTargetLayerId: null, linkTargetMethodId: null
           }
         ],
-        edges: []
+        edges: [
+          {
+            id: "cls_edge_inherit",
+            source: "cls_sample",
+            sourcePort: "top",
+            target: "cls_base",
+            targetPort: "bottom",
+            relationType: "inheritance",
+            label: "extends",
+            color: "#475569"
+          }
+        ]
       }
     }
   };
@@ -126,7 +169,7 @@ function createEmptyProject(projectId) {
 let projectData = createEmptyProject("demo_project_01");
 
 function ensureProjectStructure(data) {
-  if (!data.tags) {
+  if (!Array.isArray(data.tags)) {
     data.tags = [
       { id: "tag_sys", name: "システム", color: "#93c5fd" },
       { id: "tag_ui",  name: "UI/演出",  color: "#86efac" },
@@ -148,26 +191,27 @@ function ensureProjectStructure(data) {
   Object.values(data.layers).forEach(layer => {
     (layer.nodes || []).forEach(n => {
       if (!Array.isArray(n.tags)) n.tags = [];
-      // タグは最大1つのみに正規化
       if (n.tags.length > 1) n.tags = [n.tags[0]];
       if (n.type === 'class') {
         if (!Array.isArray(n.fields)) n.fields = [];
         if (!Array.isArray(n.methods)) n.methods = [];
         n.fields.forEach(f => normalizeClassMember(f, false));
         n.methods.forEach(m => normalizeClassMember(m, true));
+        autoAdjustClassNodeHeight(n);
       }
+    });
+    (layer.edges || []).forEach(e => {
+      if (!e.relationType) e.relationType = 'normal';
     });
   });
 }
 
-// ノードに設定されている単一タグオブジェクトを取得
 function getNodeActiveTag(node) {
   if (!node || !Array.isArray(node.tags) || node.tags.length === 0) return null;
   const tagId = node.tags[0];
   return (projectData.tags || []).find(t => t.id === tagId) || null;
 }
 
-// 実際の塗りつぶし色を返す（タグが設定されていればタグの色、未設定なら自由設定色）
 function getEffectiveNodeColor(node) {
   const activeTag = getNodeActiveTag(node);
   if (activeTag) return activeTag.color;
@@ -274,7 +318,10 @@ let marqueeRect = null;
 let lastClickInfo = { id: null, time: 0 };
 let lastCanvasClickTime = 0;
 let lastCanvasClickPos = { x: 0, y: 0 };
+
+// インライン文字編集の対象管理（通常ノード名 or クラス内メンバ）
 let editingNodeId = null;
+let editingMemberSpec = null; // { nodeId, kind: 'field'|'method', memberId }
 
 const svg = document.getElementById('canvas-svg');
 const viewport = document.getElementById('viewport');
@@ -442,7 +489,6 @@ function findNodeAcrossProject(targetNodeId) {
   return null;
 }
 
-// 指定したノード（またはクラス内の関数）をリンク参照している全オブジェクトを検索する関数
 function findBacklinksToNode(targetNodeId) {
   const backlinks = [];
   if (!targetNodeId) return backlinks;

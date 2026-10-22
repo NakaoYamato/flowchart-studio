@@ -18,7 +18,6 @@ INDEX_HTML_PATH = BASE_DIR / "templates" / "index.html"
 STATIC_DIR = BASE_DIR / "static"
 COLLECTION_NAME = "flowchart_projects"
 
-# ローカル uvicorn 用の static マウント
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
@@ -71,7 +70,6 @@ async def list_projects_from_db():
 
 @app.get("/static/{file_path:path}")
 async def serve_static_files(file_path: str):
-    """Vercel上で /static/... が api/index.py にルーティングされた場合も確実にファイルを返す"""
     target_file = (STATIC_DIR / file_path).resolve()
     if not str(target_file).startswith(str(STATIC_DIR.resolve())) or not target_file.is_file():
         raise HTTPException(status_code=404, detail="Static file not found")
@@ -135,9 +133,11 @@ async def save_project(
             doc_ref.delete()
             return {"status": "deleted", "projectId": target_id}
 
+        # tags も確実にFirestoreへ保存する
         doc_ref.set({
             "projectId": target_id,
             "currentLayerId": payload.get("currentLayerId", "root"),
+            "tags": payload.get("tags", []),
             "layers": payload.get("layers", {}),
             "updatedAt": firestore.SERVER_TIMESTAMP
         })

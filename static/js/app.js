@@ -1,5 +1,5 @@
 /**************************************************************
- * app.js : 単一タグ色制御・リンク検索＆被リンク一覧・クラス構造化入力
+ * app.js : タグ名＆色編集・クラスGUI直接追加・継承関係構築・Firebase保存
  **************************************************************/
 
 document.getElementById('btn-mode-flow').addEventListener('click', () => {
@@ -14,19 +14,25 @@ document.getElementById('btn-mode-class').addEventListener('click', () => {
   }
 });
 
-/* --- タグ管理 --- */
+/* --- タグ管理（タグ名称＆色の編集に対応） --- */
 function renderProjectTagManager() {
   const container = document.getElementById('project-tag-list');
+  // タグ名入力中にフォーカスが外れないよう、編集中は再構築をスキップ
+  if (document.activeElement && document.activeElement.classList.contains('tag-manage-name-input')) {
+    return;
+  }
   container.innerHTML = '';
   (projectData.tags || []).forEach(tag => {
     const row = document.createElement('div');
     row.className = 'tag-manage-item';
     row.innerHTML = `
       <input type="color" value="${tag.color}" title="タグの色（塗りつぶし色）を変更">
-      <span class="tag-manage-name">${tag.name}</span>
+      <input type="text" class="tag-manage-name-input" value="${tag.name}" title="クリックしてタグ名を編集">
       <button class="btn btn-danger" style="padding:1px 5px; font-size:10px;" title="タグを削除">✕</button>
     `;
     const colorInput = row.querySelector('input[type="color"]');
+    const nameInput = row.querySelector('.tag-manage-name-input');
+
     colorInput.addEventListener('change', (ev) => {
       recordHistory();
       tag.color = ev.target.value;
@@ -36,6 +42,25 @@ function renderProjectTagManager() {
       tag.color = ev.target.value;
       render();
     });
+
+    nameInput.addEventListener('change', (ev) => {
+      const newName = ev.target.value.trim();
+      if (!newName) {
+        ev.target.value = tag.name;
+        return;
+      }
+      recordHistory();
+      tag.name = newName;
+      render();
+      showToast(`🏷️ タグ名を「${newName}」に変更しました（Ctrl+Sで保存）`);
+    });
+    nameInput.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter') {
+        ev.preventDefault();
+        nameInput.blur();
+      }
+    });
+
     row.querySelector('button').addEventListener('click', () => {
       recordHistory();
       projectData.tags = projectData.tags.filter(t => t.id !== tag.id);
@@ -63,8 +88,84 @@ document.getElementById('btn-create-tag').addEventListener('click', () => {
   });
   nameInput.value = '';
   render();
-  showToast(`🏷️ タグ「${name}」を作成しました`);
+  showToast(`🏷️ タグ「${name}」を作成しました（Ctrl+SでDB保存）`);
 });
+
+/* --- キャンバス上のクラスノード内で直接「＋変数」「＋関数」を追加・インライン編集 --- */
+function quickAddClassMemberOnCanvas(classNode, kind) {
+  commitInlineEdit();
+  recordHistory();
+
+  selectedNodeIds.clear();
+  selectedNodeIds.add(classNode.id);
+  selectedEdgeId = null;
+
+  let newMember;
+  if (kind === 'field') {
+    if (!Array.isArray(classNode.fields)) classNode.fields = [];
+    const idx = classNode.fields.length + 1;
+    newMember = normalizeClassMember({
+      id: uid('fld'),
+      access: 'private',
+      memberName: `field${idx}`,
+      dataType: 'int'
+    }, false);
+    classNode.fields.push(newMember);
+  } else {
+    if (!Array.isArray(classNode.methods)) classNode.methods = [];
+    const idx = classNode.methods.length + 1;
+    newMember = normalizeClassMember({
+      id: uid('mtd'),
+      access: 'public',
+      memberName: `Method${idx}`,
+      args: '',
+      returnType: 'void'
+    }, true);
+    classNode.methods.push(newMember);
+  }
+
+  autoAdjustClassNodeHeight(classNode);
+  render();
+
+  // 追加した直後にその場で名前・型のインライン編集を自動的に開く
+  startInlineEditClassMember(classNode, kind, newMember, null);
+}
+
+function startInlineEditClassMember(classNode, kind, member, rowDOM = null) {
+  if (isNodeLocked(classNode)) return;
+  commitInlineEdit();
+
+  editingNodeId = classNode.id;
+  editingMemberSpec = { nodeId: classNode.id, kind, memberId: member.id };
+
+  const isMethod = (kind === 'method');
+  const currentText = isMethod
+    ? `${member.memberName}(${member.args || ''}): ${member.returnType || 'void'}`
+    : `${member.memberName}: ${member.dataType || 'int'}`;
+
+  const svgRect = svg.getBoundingClientRect();
+  inlineEditor.style.display = 'block';
+
+  if (rowDOM) {
+    const r = rowDOM.getBoundingClientRect();
+    inlineEditor.style.left = `${r.left - svgRect.left}px`;
+    inlineEditor.style.top = `${r.top - svgRect.top - 2}px`;
+    inlineEditor.style.width = `${Math.max(160, r.width)}px`;
+    inlineEditor.style.height = `28px`;
+  } else {
+    inlineEditor.style.left = `${panX + (classNode.x + 12) * zoom}px`;
+    inlineEditor.style.top = `${panY + (classNode.y + classNode.height - 46) * zoom}px`;
+    inlineEditor.style.width = `${(classNode.width - 24) * zoom}px`;
+    inlineEditor.style.height = `30px`;
+  }
+
+  inlineEditor.style.fontSize = `${Math.max(12, (classNode.fontSize || 13) * zoom)}px`;
+  inlineEditor.style.fontFamily = "'Consolas', 'Meiryo', monospace";
+  inlineEditor.style.textAlign = 'left';
+  inlineEditor.value = currentText;
+  inlineEditor.focus();
+  inlineEditor.select();
+}
 
 /* --- ダブルクリック時の「周辺オブジェクト選択ポップアップ」 --- */
 function findNearbyObjects(worldX, worldY, radius = 90) {
@@ -78,11 +179,12 @@ function findNearbyObjects(worldX, worldY, radius = 90) {
       const tgt = layer.nodes.find(n => n.id === e.target);
       const sName = src ? (src.text || src.id).slice(0, 10) : '?';
       const tName = tgt ? (tgt.text || tgt.id).slice(0, 10) : '?';
+      const prefix = e.relationType === 'inheritance' ? '▷ 継承' : '↗ 矢印';
       results.push({
         kind: 'edge',
         id: e.id,
         dist: Math.round(d),
-        label: `↗ 矢印: ${sName} ➔ ${tName}${e.label ? ` (${e.label})` : ''}`
+        label: `${prefix}: ${sName} ➔ ${tName}${e.label ? ` (${e.label})` : ''}`
       });
     }
   });
@@ -117,7 +219,7 @@ function openNearbyPicker(clientX, clientY, items, doubleClickedNode = null) {
     const editRow = document.createElement('div');
     editRow.className = 'nearby-item';
     editRow.style.borderLeft = '3px solid #10b981';
-    editRow.innerHTML = `<span>✏️ 「${(doubleClickedNode.text || 'この要素').slice(0, 12)}」の文字を編集</span>`;
+    editRow.innerHTML = `<span>✏️ 「${(doubleClickedNode.text || 'この要素').slice(0, 12)}」の名前を編集</span>`;
     editRow.addEventListener('click', () => {
       hideNearbyPicker();
       startInlineEdit(doubleClickedNode);
@@ -159,7 +261,7 @@ function openNearbyPicker(clientX, clientY, items, doubleClickedNode = null) {
 document.getElementById('btn-close-nearby').addEventListener('click', hideNearbyPicker);
 nearbyPicker.addEventListener('mousedown', (ev) => ev.stopPropagation());
 
-/* --- 矢印の間への矩形生成 --- */
+/* --- 矢印の間への要素生成 --- */
 function insertNodeBetweenEdge(edgeId) {
   const layer = currentLayer();
   const edgeIdx = layer.edges.findIndex(e => e.id === edgeId);
@@ -172,26 +274,29 @@ function insertNodeBetweenEdge(edgeId) {
 
   recordHistory();
 
-  const w = srcNode.type === 'rect' ? srcNode.width : 192;
-  const h = srcNode.type === 'rect' ? srcNode.height : 84;
+  const inClass = isClassMode();
+  const w = inClass ? 264 : (srcNode.type === 'rect' ? srcNode.width : 192);
+  const h = inClass ? 192 : (srcNode.type === 'rect' ? srcNode.height : 84);
   const p1 = getPortCoords(srcNode, edge.sourcePort);
   const p2 = getPortCoords(tgtNode, edge.targetPort);
   const midX = (p1.x + p2.x) / 2;
   const midY = (p1.y + p2.y) / 2;
 
   const newNode = {
-    id: uid('node'),
-    type: 'rect',
-    text: '',
+    id: uid(inClass ? 'cls' : 'node'),
+    type: inClass ? 'class' : 'rect',
+    text: inClass ? 'MiddleClass' : '',
     x: snapToGrid(midX - w / 2),
     y: snapToGrid(midY - h / 2),
     width: w,
     height: h,
-    color: srcNode.isParentProxy ? '#dbeafe' : (srcNode.color || '#dbeafe'),
-    fontSize: srcNode.fontSize || 14,
-    fontFamily: srcNode.fontFamily || "'Segoe UI', 'Meiryo', sans-serif",
-    textAlign: srcNode.textAlign || 'center',
+    color: srcNode.isParentProxy ? '#dbeafe' : (srcNode.color || (inClass ? '#f3e8ff' : '#dbeafe')),
+    fontSize: srcNode.fontSize || (inClass ? 13 : 14),
+    fontFamily: srcNode.fontFamily || (inClass ? "'Consolas', 'Meiryo', monospace" : "'Segoe UI', 'Meiryo', sans-serif"),
+    textAlign: srcNode.textAlign || (inClass ? 'left' : 'center'),
     tags: Array.isArray(srcNode.tags) && srcNode.tags.length > 0 ? [srcNode.tags[0]] : [],
+    fields: inClass ? [] : undefined,
+    methods: inClass ? [] : undefined,
     parentGroupId: srcNode.parentGroupId || null,
     childLayerId: null,
     locked: false,
@@ -212,6 +317,7 @@ function insertNodeBetweenEdge(edgeId) {
     sourcePort: edge.sourcePort,
     target: newNode.id,
     targetPort: inPort,
+    relationType: edge.relationType || 'normal',
     label: edge.label || '',
     color: edge.color || '#475569'
   };
@@ -221,6 +327,7 @@ function insertNodeBetweenEdge(edgeId) {
     sourcePort: outPort,
     target: edge.target,
     targetPort: edge.targetPort,
+    relationType: edge.relationType || 'normal',
     label: '',
     color: edge.color || '#475569'
   };
@@ -237,7 +344,7 @@ function insertNodeBetweenEdge(edgeId) {
   selectedNodeIds.clear();
   selectedNodeIds.add(newNode.id);
   render();
-  showToast('➕ 矢印の間に矩形を生成しました（元矩形のプロパティを継承）');
+  showToast('➕ 矢印の間に要素を生成しました');
 }
 
 /* --- マウスイベント --- */
@@ -429,8 +536,8 @@ function openContextMenuAt(clientX, clientY) {
 function spawnConnectedNode(sourceNode, sourcePort, dropX, dropY, isClickOnly = false) {
   const layer = currentLayer();
   const inClass = isClassMode();
-  const w = inClass ? 252 : (sourceNode.type === 'rect' ? sourceNode.width : 192);
-  const h = inClass ? 176 : (sourceNode.type === 'rect' ? sourceNode.height : 84);
+  const w = inClass ? 264 : (sourceNode.type === 'rect' ? sourceNode.width : 192);
+  const h = inClass ? 192 : (sourceNode.type === 'rect' ? sourceNode.height : 84);
   let pos;
 
   if (isClickOnly) {
@@ -446,7 +553,7 @@ function spawnConnectedNode(sourceNode, sourcePort, dropX, dropY, isClickOnly = 
   const newNode = {
     id: uid(inClass ? 'cls' : 'node'),
     type: inClass ? 'class' : 'rect',
-    text: inClass ? 'NewClass' : '',
+    text: inClass ? 'ChildClass' : '',
     x: snapToGrid(pos.x),
     y: snapToGrid(pos.y),
     width: w,
@@ -476,20 +583,35 @@ function spawnConnectedNode(sourceNode, sourcePort, dropX, dropY, isClickOnly = 
   layer.nodes.push(newNode);
 
   const targetPort = getOppositePort(sourcePort);
-  layer.edges.push({
-    id: uid('edge'),
-    source: sourceNode.id,
-    sourcePort: sourcePort,
-    target: newNode.id,
-    targetPort: targetPort,
-    label: '',
-    color: '#475569'
-  });
+  if (inClass && sourceNode.type === 'class') {
+    // クラス図での新規クラス派生時は「子クラス ➔ 親クラス(sourceNode)」への継承（▷）矢印を自動構築
+    layer.edges.push({
+      id: uid('edge'),
+      source: newNode.id,
+      sourcePort: targetPort,
+      target: sourceNode.id,
+      targetPort: sourcePort,
+      relationType: 'inheritance',
+      label: 'extends',
+      color: '#475569'
+    });
+  } else {
+    layer.edges.push({
+      id: uid('edge'),
+      source: sourceNode.id,
+      sourcePort: sourcePort,
+      target: newNode.id,
+      targetPort: targetPort,
+      relationType: 'normal',
+      label: '',
+      color: '#475569'
+    });
+  }
 
   selectedNodeIds.clear();
   selectedNodeIds.add(newNode.id);
   selectedEdgeId = null;
-  showToast('✨ 新規要素を生成して矢印を接続しました');
+  showToast(inClass ? '🧬 派生クラスを生成し、継承(▷)で接続しました' : '✨ 新規矩形を生成して矢印を接続しました');
 }
 
 window.addEventListener('mouseup', (ev) => {
@@ -553,13 +675,15 @@ window.addEventListener('mouseup', (ev) => {
     if (target && mode === 'connect') {
       recordHistory();
       const targetPort = detectClosestPort(target, pt.x, pt.y);
+      const isClassInherit = (isClassMode() && srcNode && srcNode.type === 'class' && target.type === 'class');
       layer.edges.push({
         id: uid('edge'),
         source: activeConnect.sourceId,
         sourcePort: activeConnect.sourcePort,
         target: target.id,
         targetPort,
-        label: '',
+        relationType: isClassInherit ? 'inheritance' : 'normal',
+        label: isClassInherit ? 'extends' : '',
         color: '#475569'
       });
     } else if (srcNode) {
@@ -612,7 +736,7 @@ svg.addEventListener('wheel', (ev) => {
   updateViewportTransform();
 }, { passive: false });
 
-/* --- インライン編集・ミニツールバー --- */
+/* --- インライン編集（ノード名 ＆ クラス内変数・関数の直接編集対応） --- */
 miniToolbar.addEventListener('mousedown', (ev) => ev.stopPropagation());
 contextMenu.addEventListener('mousedown', (ev) => ev.stopPropagation());
 inlineEditor.addEventListener('mousedown', (ev) => ev.stopPropagation());
@@ -634,6 +758,7 @@ function toggleLockSelection() {
 function startInlineEdit(node) {
   if (isNodeLocked(node)) return;
   editingNodeId = node.id;
+  editingMemberSpec = null;
   selectedNodeIds.clear();
   selectedNodeIds.add(node.id);
   render();
@@ -655,14 +780,28 @@ function startInlineEdit(node) {
 function commitInlineEdit() {
   if (!editingNodeId) return;
   const node = currentLayer().nodes.find(n => n.id === editingNodeId);
-  if (node && !isNodeLocked(node) && node.text !== inlineEditor.value) {
-    recordHistory();
-    node.text = inlineEditor.value;
-    if (node.childLayerId && projectData.layers[node.childLayerId]) {
-      projectData.layers[node.childLayerId].name = node.text || '無題の階層';
+
+  if (node && !isNodeLocked(node)) {
+    if (editingMemberSpec) {
+      // クラス内の変数または関数のインライン編集確定
+      const isMethod = (editingMemberSpec.kind === 'method');
+      const list = isMethod ? (node.methods || []) : (node.fields || []);
+      const targetMember = list.find(m => m.id === editingMemberSpec.memberId);
+      if (targetMember) {
+        recordHistory();
+        parseInlineMemberText(targetMember, inlineEditor.value, isMethod);
+      }
+    } else if (node.text !== inlineEditor.value) {
+      recordHistory();
+      node.text = inlineEditor.value;
+      if (node.childLayerId && projectData.layers[node.childLayerId]) {
+        projectData.layers[node.childLayerId].name = node.text || '無題の階層';
+      }
     }
   }
+
   editingNodeId = null;
+  editingMemberSpec = null;
   inlineEditor.style.display = 'none';
   render();
 }
@@ -673,6 +812,7 @@ inlineEditor.addEventListener('keydown', (ev) => {
     commitInlineEdit();
   } else if (ev.key === 'Escape') {
     editingNodeId = null;
+    editingMemberSpec = null;
     inlineEditor.style.display = 'none';
     render();
   }
@@ -716,7 +856,6 @@ function updateMiniToolbarPosition() {
 
   const mtColor = document.getElementById('mt-color');
   mtColor.value = getEffectiveNodeColor(first);
-  // タグ設定済みの場合はミニツールバーのカラーピッカーも無効化
   mtColor.disabled = allLocked || anyHasTag;
   mtColor.title = anyHasTag ? 'タグの色が適用されています（タグ解除で自由変更可）' : '塗りつぶし色を変更';
 
@@ -952,13 +1091,12 @@ window.addEventListener('keydown', (ev) => {
   }
 });
 
-/* --- 右パネル：単一タグ選択（排他仕様・塗りつぶし色連動） --- */
+/* --- 右パネル：単一タグ選択 --- */
 function populateNodeTagSelector(selectedNodes) {
   const container = document.getElementById('node-tag-selector');
   container.innerHTML = '';
   const allTags = projectData.tags || [];
 
-  // 「タグなし（自由色）」チップ
   const noneSelected = selectedNodes.every(n => !Array.isArray(n.tags) || n.tags.length === 0);
   const clearChip = document.createElement('span');
   clearChip.className = 'tag-chip' + (noneSelected ? ' selected' : '');
@@ -981,7 +1119,6 @@ function populateNodeTagSelector(selectedNodes) {
     chip.textContent = tag.name;
     chip.addEventListener('click', () => {
       applyToSelectedNodes(n => {
-        // 既に同じタグが付いていれば解除、違えばそのタグ1つのみをセット
         if (Array.isArray(n.tags) && n.tags[0] === tag.id) {
           n.tags = [];
         } else {
@@ -993,8 +1130,60 @@ function populateNodeTagSelector(selectedNodes) {
   });
 }
 
-/* --- 右パネル：クラス構造（public/private/protected選択＋名前＋型の分割編集） --- */
+/* --- 右パネル：クラスの継承元（親クラス）選択プルダウン＆メンバリスト --- */
+function populateClassExtendsSelector(classNode) {
+  const select = document.getElementById('prop-class-extends');
+  const layer = currentLayer();
+  select.innerHTML = '<option value="">（継承なし）</option>';
+
+  const currentInheritEdge = layer.edges.find(e => e.source === classNode.id && e.relationType === 'inheritance');
+  const currentParentId = currentInheritEdge ? currentInheritEdge.target : '';
+
+  layer.nodes.filter(n => n.type === 'class' && n.id !== classNode.id).forEach(otherCls => {
+    const opt = document.createElement('option');
+    opt.value = otherCls.id;
+    opt.textContent = `🧩 ${otherCls.text || otherCls.id}`;
+    if (otherCls.id === currentParentId) opt.selected = true;
+    select.appendChild(opt);
+  });
+}
+
+document.getElementById('prop-class-extends').addEventListener('change', (ev) => {
+  const layer = currentLayer();
+  const classNode = layer.nodes.find(n => selectedNodeIds.has(n.id) && n.type === 'class');
+  if (!classNode) return;
+
+  recordHistory();
+  const newParentId = ev.target.value;
+  // 既存の継承エッジを一旦削除
+  layer.edges = layer.edges.filter(e => !(e.source === classNode.id && e.relationType === 'inheritance'));
+
+  if (newParentId) {
+    const parentCls = layer.nodes.find(n => n.id === newParentId);
+    if (parentCls) {
+      const srcPort = (parentCls.y < classNode.y) ? 'top' : 'right';
+      const tgtPort = (parentCls.y < classNode.y) ? 'bottom' : 'left';
+      layer.edges.push({
+        id: uid('edge'),
+        source: classNode.id,
+        sourcePort: srcPort,
+        target: parentCls.id,
+        targetPort: tgtPort,
+        relationType: 'inheritance',
+        label: 'extends',
+        color: '#475569'
+      });
+      showToast(`🧬 「${parentCls.text}」を親クラスとして継承接続しました`);
+    }
+  } else {
+    showToast('継承関係を解除しました');
+  }
+  render();
+});
+
 function renderClassMembersEditor(classNode) {
+  populateClassExtendsSelector(classNode);
+
   const fieldListEl = document.getElementById('class-field-list');
   const methodListEl = document.getElementById('class-method-list');
   fieldListEl.innerHTML = '';
@@ -1099,6 +1288,7 @@ document.getElementById('btn-add-class-field').addEventListener('click', () => {
         dataType: mType
       }, false);
       n.fields.push(newField);
+      autoAdjustClassNodeHeight(n);
     }
   }, true);
   nameEl.value = '';
@@ -1126,6 +1316,7 @@ document.getElementById('btn-add-class-method').addEventListener('click', () => 
         returnType: mType
       }, true);
       n.methods.push(newMethod);
+      autoAdjustClassNodeHeight(n);
     }
   }, true);
   nameEl.value = '';
@@ -1160,7 +1351,7 @@ function populateMemoParentOptions(memoNode) {
   });
 }
 
-/* --- 右パネル：リンク選択（検索フィルター対応） ＆ 被リンク（逆参照）一覧 --- */
+/* --- 右パネル：リンク選択 ＆ 被リンク（逆参照）一覧 --- */
 function populateLinkTargetOptions(currentNode) {
   const select = document.getElementById('prop-link-select');
   const searchInput = document.getElementById('prop-link-search');
@@ -1173,12 +1364,11 @@ function populateLinkTargetOptions(currentNode) {
     : '';
 
   const matchesFilter = (text, val) => {
-    if (val === curVal) return true; // 現在選択中の項目は常に残す
+    if (val === curVal) return true;
     if (!query) return true;
     return text.toLowerCase().includes(query);
   };
 
-  // 1. クラス図のクラス＆関数
   const clsLayer = projectData.layers[CLASS_LAYER_ID];
   if (clsLayer && clsLayer.nodes.length > 0) {
     const grpClass = document.createElement('optgroup');
@@ -1211,7 +1401,6 @@ function populateLinkTargetOptions(currentNode) {
     if (grpClass.children.length > 0) select.appendChild(grpClass);
   }
 
-  // 2. フローチャート各階層のノード
   const grpFlow = document.createElement('optgroup');
   grpFlow.label = '📊 フローチャート要素';
   Object.values(projectData.layers).forEach(layer => {
@@ -1235,7 +1424,6 @@ function populateLinkTargetOptions(currentNode) {
   const jumpBtn = document.getElementById('btn-prop-jump-link');
   jumpBtn.style.display = currentNode.linkTargetNodeId ? 'inline-flex' : 'none';
 
-  // 3. この要素を参照している元オブジェクト一覧（被リンク）を表示
   renderBacklinksList(currentNode);
 }
 
@@ -1270,7 +1458,6 @@ function renderBacklinksList(currentNode) {
   });
 }
 
-// リンク検索欄の入力時にプルダウンを即時フィルタリング
 document.getElementById('prop-link-search').addEventListener('input', () => {
   const layer = currentLayer();
   const node = layer.nodes.find(n => selectedNodeIds.has(n.id));
@@ -1348,7 +1535,6 @@ function updatePropertyPanel() {
       document.getElementById(id).disabled = locked;
     });
 
-    // タグが設定されている場合はカラーピッカーをロックし、タグ未設定時のみ自由変更可能にする
     const colorInput = document.getElementById('prop-color');
     const colorHint = document.getElementById('prop-color-tag-hint');
     colorInput.value = getEffectiveNodeColor(first);
@@ -1365,6 +1551,11 @@ function updatePropertyPanel() {
       edgeEl.style.display = 'block';
       document.getElementById('prop-edge-label').value = edge.label || '';
       document.getElementById('prop-edge-color').value = edge.color || '#475569';
+
+      const rType = edge.relationType || 'normal';
+      ['normal', 'inheritance', 'implementation', 'dependency'].forEach(t => {
+        document.getElementById(`btn-edge-type-${t}`).classList.toggle('active-btn', rType === t);
+      });
     }
   } else {
     emptyEl.style.display = 'block';
@@ -1372,6 +1563,35 @@ function updatePropertyPanel() {
     edgeEl.style.display = 'none';
   }
 }
+
+// 矢印の種類（継承・実装・通常・依存）切替ボタン
+function setSelectedEdgeRelationType(relType) {
+  const edge = currentLayer().edges.find(ed => ed.id === selectedEdgeId);
+  if (!edge) return;
+  recordHistory();
+  edge.relationType = relType;
+  if (relType === 'inheritance' && !edge.label) edge.label = 'extends';
+  if (relType === 'implementation' && !edge.label) edge.label = 'implements';
+  render();
+}
+document.getElementById('btn-edge-type-normal').addEventListener('click', () => setSelectedEdgeRelationType('normal'));
+document.getElementById('btn-edge-type-inheritance').addEventListener('click', () => setSelectedEdgeRelationType('inheritance'));
+document.getElementById('btn-edge-type-implementation').addEventListener('click', () => setSelectedEdgeRelationType('implementation'));
+document.getElementById('btn-edge-type-dependency').addEventListener('click', () => setSelectedEdgeRelationType('dependency'));
+
+document.getElementById('btn-edge-reverse').addEventListener('click', () => {
+  const edge = currentLayer().edges.find(ed => ed.id === selectedEdgeId);
+  if (!edge) return;
+  recordHistory();
+  const tmpId = edge.source;
+  const tmpPort = edge.sourcePort;
+  edge.source = edge.target;
+  edge.sourcePort = edge.targetPort;
+  edge.target = tmpId;
+  edge.targetPort = tmpPort;
+  render();
+  showToast('⇄ 矢印の向きを反転しました');
+});
 
 document.getElementById('prop-text').addEventListener('change', (e) => {
   applyToSelectedNodes(n => {
@@ -1502,14 +1722,14 @@ function addNode(type, customWorldPos = null, parentSpec = null) {
     text: isCont ? '新規グループコンテナ' : (isMemo ? '仕様メモ' : (isClass ? 'NewClass' : '')),
     x: baseX,
     y: baseY,
-    width: isCont ? 360 : (isClass ? 252 : 192),
-    height: isCont ? 240 : (isClass ? 176 : (isMemo ? 108 : 84)),
+    width: isCont ? 360 : (isClass ? 264 : 192),
+    height: isCont ? 240 : (isClass ? 192 : (isMemo ? 108 : 84)),
     color: isCont ? '#e2e8f0' : (isMemo ? '#fef08a' : (isClass ? '#f3e8ff' : '#dbeafe')),
     fontSize: isClass ? 13 : 14,
     fontFamily: isClass ? "'Consolas', 'Meiryo', monospace" : "'Segoe UI', 'Meiryo', sans-serif",
     textAlign: (isMemo || isCont || isClass) ? 'left' : 'center',
     tags: [],
-    fields: isClass ? [normalizeClassMember({ id: uid('fld'), access: 'public', memberName: 'value', dataType: 'int' }, false)] : undefined,
+    fields: isClass ? [normalizeClassMember({ id: uid('fld'), access: 'private', memberName: 'value', dataType: 'int' }, false)] : undefined,
     methods: isClass ? [normalizeClassMember({ id: uid('mtd'), access: 'public', memberName: 'Execute', args: '', returnType: 'void' }, true)] : undefined,
     parentGroupId: null,
     childLayerId: null,
@@ -1732,6 +1952,11 @@ async function saveCurrentProject() {
   const pid = projectData.projectId;
   if (!pid) return showToast('プロジェクトが選択されていません');
 
+  // タグ名入力欄にフォーカスがある場合は確定させてから保存
+  if (document.activeElement && document.activeElement.classList.contains('tag-manage-name-input')) {
+    document.activeElement.blur();
+  }
+
   isSaving = true;
   const saveBtn = document.getElementById('btn-cloud-save');
   const spinner = document.getElementById('save-spinner');
@@ -1753,7 +1978,7 @@ async function saveCurrentProject() {
       const errData = await res.json().catch(() => ({}));
       throw new Error(errData.detail || `HTTP ${res.status}`);
     }
-    showToast(`☁ Firebaseへ保存しました (ID: ${pid})`);
+    showToast(`☁ Firebaseへ保存しました (タグ・全階層・クラス図)`);
   } catch (err) {
     console.error(err);
     showToast(`保存エラー: ${err.message}`);

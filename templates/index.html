@@ -48,7 +48,7 @@
   <div class="subbar">
     <div class="breadcrumbs" id="breadcrumbs"></div>
     <div class="hint-text">
-      【操作】右クリック短押し：生成メニュー ｜ 密集地をダブルクリック：周辺オブジェクト選択 ｜ 右ドラッグ：視点移動 ｜ Ctrl+S：保存
+      【操作】クラス内「＋変数 / ＋関数」：GUI上で直接追加・ダブルクリック編集 ｜ 矢印選択：継承(▷)切替 ｜ Ctrl+S：保存
     </div>
   </div>
 
@@ -70,9 +70,9 @@
         </div>
       </div>
 
-      <!-- タグ管理（タグごとの色設定） -->
+      <!-- タグ管理（名前＆色の編集・データベース保存対応） -->
       <div class="panel-section">
-        <div class="panel-title">🏷️ タグ管理 (塗りつぶし色設定)</div>
+        <div class="panel-title">🏷️ タグ管理 (名前・色編集)</div>
         <div style="display:flex; gap:5px; margin-bottom:8px;">
           <input type="text" id="new-tag-name" class="form-control" placeholder="新規タグ名" style="padding:4px 7px;">
           <input type="color" id="new-tag-color" value="#93c5fd" style="width:32px; height:29px; border:none; background:none; cursor:pointer; flex-shrink:0;">
@@ -99,6 +99,7 @@
           <pattern id="grid-pattern" width="24" height="24" patternUnits="userSpaceOnUse">
             <circle cx="2" cy="2" r="1.3" fill="#cbd5e1"></circle>
           </pattern>
+          <!-- 通常矢印 -->
           <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
             <polygon points="0 0, 10 3.5, 0 7" fill="#475569"></polygon>
           </marker>
@@ -107,6 +108,13 @@
           </marker>
           <marker id="arrowhead-create" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
             <polygon points="0 0, 10 3.5, 0 7" fill="#10b981"></polygon>
+          </marker>
+          <!-- クラス図：継承（白抜き三角矢印）マーカー -->
+          <marker id="arrowhead-inheritance" markerWidth="14" markerHeight="12" refX="13" refY="6" orient="auto">
+            <polygon points="0 1, 13 6, 0 11" fill="#f8fafc" stroke="#475569" stroke-width="1.8"></polygon>
+          </marker>
+          <marker id="arrowhead-inheritance-selected" markerWidth="14" markerHeight="12" refX="13" refY="6" orient="auto">
+            <polygon points="0 1, 13 6, 0 11" fill="#eff6ff" stroke="#3b82f6" stroke-width="2"></polygon>
           </marker>
         </defs>
 
@@ -153,7 +161,7 @@
         <div class="ctx-item" id="ctx-add-memo">📝 ここに仕様メモを生成</div>
         <div class="ctx-divider" id="ctx-child-divider" style="display:none;"></div>
         <div class="ctx-item" id="ctx-add-child-memo" style="display:none;">📎 選択要素に「子メモ」を追加</div>
-        <div class="ctx-item" id="ctx-insert-on-edge" style="display:none;">➕ この矢印の間に矩形を生成</div>
+        <div class="ctx-item" id="ctx-insert-on-edge" style="display:none;">➕ この矢印の間に要素を生成</div>
         <div class="ctx-divider"></div>
         <div class="ctx-item" id="ctx-paste">📋 ここに貼り付け (Ctrl+V)</div>
       </div>
@@ -198,49 +206,56 @@
             <textarea id="prop-text" class="form-control" rows="2" placeholder="テキストを入力..."></textarea>
           </div>
 
-          <!-- クラスノード専用：アクセス修飾子選択＋名前＋型の構造化入力 -->
+          <!-- クラスノード専用：継承先（親クラス）のワンクリック設定 ＋ メンバ変数・関数編集 -->
           <div class="sub-box" id="prop-class-box" style="display:none;">
-            <label style="font-size:11px; color:#c4b5fd; font-weight:700; display:block; margin-bottom:8px;">
-              🧩 クラス構造（変数・関数リスト）
+            <label style="font-size:11px; color:#c4b5fd; font-weight:700; display:block; margin-bottom:6px;">
+              🧬 親クラス（継承元 Base Class）の指定
+            </label>
+            <select id="prop-class-extends" class="form-control" style="margin-bottom:10px;">
+              <option value="">（継承なし）</option>
+            </select>
+
+            <label style="font-size:11px; color:#c4b5fd; font-weight:700; display:block; margin-bottom:6px;">
+              🧩 変数・関数リスト（キャンバス上でも直接追加・編集できます）
             </label>
 
             <!-- メンバ変数追加 -->
             <div class="form-group">
-              <label>メンバ変数 / フィールド追加</label>
+              <label>メンバ変数 / フィールド</label>
               <div class="struct-input-row">
                 <select id="new-field-access" class="form-control struct-access" title="アクセス修飾子">
                   <option value="public">+ public</option>
                   <option value="private">- private</option>
                   <option value="protected"># protected</option>
                 </select>
-                <input type="text" id="new-field-name" class="form-control" placeholder="変数名 (例: hp)">
-                <input type="text" id="new-field-type" class="form-control" placeholder="型 (例: int)">
-                <button class="btn btn-primary" id="btn-add-class-field" style="padding:5px 8px;">追加</button>
+                <input type="text" id="new-field-name" class="form-control" placeholder="変数名 (hp)">
+                <input type="text" id="new-field-type" class="form-control" placeholder="型 (int)">
+                <button class="btn btn-primary" id="btn-add-class-field" style="padding:5px 8px;">＋</button>
               </div>
               <div id="class-field-list" class="member-edit-list"></div>
             </div>
 
             <!-- 関数 / メソッド追加 -->
             <div class="form-group" style="margin-bottom:0;">
-              <label>関数 / メソッド追加 (リンク参照可能)</label>
+              <label>関数 / メソッド (リンク参照可能)</label>
               <div class="struct-input-row" style="margin-bottom:4px;">
                 <select id="new-method-access" class="form-control struct-access" title="アクセス修飾子">
                   <option value="public">+ public</option>
                   <option value="private">- private</option>
                   <option value="protected"># protected</option>
                 </select>
-                <input type="text" id="new-method-name" class="form-control" placeholder="関数名 (例: Attack)">
-                <input type="text" id="new-method-type" class="form-control" placeholder="戻り値型 (例: void)">
+                <input type="text" id="new-method-name" class="form-control" placeholder="関数名 (Attack)">
+                <input type="text" id="new-method-type" class="form-control" placeholder="型 (void)">
               </div>
               <div style="display:flex; gap:4px; margin-bottom:6px;">
                 <input type="text" id="new-method-args" class="form-control" placeholder="引数 (省略可 例: power: int)">
-                <button class="btn btn-purple" id="btn-add-class-method" style="padding:5px 10px;">追加</button>
+                <button class="btn btn-purple" id="btn-add-class-method" style="padding:5px 10px;">＋</button>
               </div>
               <div id="class-method-list" class="member-edit-list"></div>
             </div>
           </div>
 
-          <!-- タグ付与セクション（1つのみ選択可能・塗りつぶし色に連動） -->
+          <!-- タグ付与セクション -->
           <div class="sub-box" id="prop-tags-box">
             <label style="font-size:11px; color:#93c5fd; font-weight:700; display:block; margin-bottom:6px;">
               🏷️ タグ設定（1つのみ選択可・タグ色が塗りつぶし色になります）
@@ -305,7 +320,7 @@
             </button>
           </div>
 
-          <!-- リンクボタン設定（検索フィルター付き＋被リンク逆参照一覧） -->
+          <!-- リンクボタン設定 -->
           <div class="sub-box" id="prop-link-box">
             <label style="font-size:11px; color:#c4b5fd; font-weight:700; display:block; margin-bottom:6px;">
               🔗 参照リンク設定（要素・クラス・関数へ移動）
@@ -318,7 +333,6 @@
               🚀 リンク先へ今すぐジャンプ
             </button>
 
-            <!-- 逆参照（この要素を参照しているオブジェクト一覧） -->
             <div id="prop-backlinks-section" style="border-top:1px solid #333842; padding-top:8px; margin-top:4px;">
               <label style="font-size:11px; color:#93c5fd; font-weight:700; display:block; margin-bottom:5px;">
                 📥 この要素を参照している元オブジェクト
@@ -332,11 +346,26 @@
           </button>
         </div>
 
-        <!-- 矢印（エッジ）用プロパティ -->
+        <!-- 矢印（エッジ）用プロパティ（継承・実装などの関係種選択に対応） -->
         <div id="prop-edge" style="display:none;">
+          <div class="sub-box">
+            <label style="font-size:11px; color:#c4b5fd; font-weight:700; display:block; margin-bottom:6px;">
+              🧬 矢印の種類（クラス継承・関連タイプ）
+            </label>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">
+              <button type="button" class="btn" id="btn-edge-type-normal" style="justify-content:center;">➔ 通常 / 関連</button>
+              <button type="button" class="btn" id="btn-edge-type-inheritance" style="justify-content:center;">▷ 継承 (extends)</button>
+              <button type="button" class="btn" id="btn-edge-type-implementation" style="justify-content:center;">‥▷ 実装 (interface)</button>
+              <button type="button" class="btn" id="btn-edge-type-dependency" style="justify-content:center;">‥➔ 依存 (破線)</button>
+            </div>
+            <button type="button" class="btn" id="btn-edge-reverse" style="width:100%; justify-content:center; margin-top:6px;">
+              ⇄ 矢印の向き（親子の向き）を反転する
+            </button>
+          </div>
+
           <div class="form-group">
             <label>矢印のラベル</label>
-            <input type="text" id="prop-edge-label" class="form-control">
+            <input type="text" id="prop-edge-label" class="form-control" placeholder="例: extends / 生成 / 呼び出し">
           </div>
           <div class="form-group">
             <label>矢印の色</label>
@@ -348,11 +377,8 @@
               ➕ 矢印の分割・中継ノード挿入
             </label>
             <button class="btn btn-primary" id="btn-insert-rect-on-edge" style="width:100%; justify-content:center; margin-bottom:6px;">
-              ➕ この矢印の間に矩形を生成
+              ➕ この矢印の間に要素を生成
             </button>
-            <div style="font-size:10px; color:var(--text-sub); line-height:1.4;">
-              ※矢印が伸びている元の矩形からサイズ・色・フォント・タグ設定を引き継いで挿入します。
-            </div>
           </div>
 
           <button class="btn btn-memo" id="btn-edge-add-child-memo" style="width:100%; justify-content:center;">
