@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Hierarchical Flowchart Studio</title>
+  <title>Hierarchical Flowchart & Class Studio</title>
   <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
@@ -14,15 +14,17 @@
       <button class="btn" id="btn-toggle-left" title="左パネルの表示切替">◀ 左パネル</button>
       <span class="app-title">FlowHierarchy</span>
       <button class="btn" id="btn-open-modal" title="プロジェクト一覧を開く">📋 プロジェクト一覧</button>
-      <button class="btn btn-primary" id="btn-add-rect">＋ 矩形</button>
-      <button class="btn" id="btn-add-container">＋ コンテナ</button>
-      <button class="btn btn-memo" id="btn-add-memo">📝 メモ</button>
+
+      <!-- フローチャート / クラス図 モード切替タブ -->
+      <div class="mode-switch-group">
+        <button class="btn active-mode" id="btn-mode-flow">📊 フローチャート</button>
+        <button class="btn" id="btn-mode-class">🧩 クラス図</button>
+      </div>
     </div>
 
     <div class="header-center">
       <button class="btn" id="btn-undo" title="元に戻す (Ctrl+Z / マウス戻るボタン)" disabled>↶ 戻す</button>
       <button class="btn" id="btn-redo" title="やり直す (Ctrl+Y / マウス進むボタン)" disabled>↷ 進む</button>
-      <button class="btn" id="btn-lock-toggle" title="選択要素のロック切替 (Ctrl+L)">🔒 ロック</button>
       <button class="btn" id="btn-copy" title="Ctrl+C">コピー</button>
       <button class="btn" id="btn-paste" title="Ctrl+V">貼り付け</button>
       <button class="btn btn-danger" id="btn-delete" title="Delete">削除</button>
@@ -35,7 +37,10 @@
         <span id="current-project-label">未選択</span>
       </div>
       <button class="btn" id="btn-copy-url" title="このプロジェクトの専用URLをコピー">🔗 URL</button>
-      <button class="btn btn-success" id="btn-cloud-save" title="ショートカット: Ctrl+S">☁ 保存 (Ctrl+S)</button>
+      <button class="btn btn-success" id="btn-cloud-save" title="ショートカット: Ctrl+S">
+        <span class="save-spinner" id="save-spinner"></span>
+        <span id="save-btn-text">☁ 保存 (Ctrl+S)</span>
+      </button>
       <button class="btn" id="btn-toggle-right" title="右パネルの表示切替">右パネル ▶</button>
     </div>
   </header>
@@ -44,7 +49,7 @@
   <div class="subbar">
     <div class="breadcrumbs" id="breadcrumbs"></div>
     <div class="hint-text">
-      【操作】右クリック短押し：生成メニュー ｜ 右ドラッグ：視点移動 ｜ Ctrl+S：保存 ｜ 矢印選択：間に矩形生成 ｜ 🔗バッジ：リンク先へジャンプ
+      【操作】右クリック短押し：生成メニュー ｜ 密集地をダブルクリック：周辺オブジェクト選択 ｜ 右ドラッグ：視点移動 ｜ Ctrl+S：保存
     </div>
   </div>
 
@@ -54,14 +59,31 @@
     <aside class="side-panel" id="left-panel">
       <div class="panel-section">
         <div class="panel-title">要素の追加</div>
-        <div style="display:flex; flex-direction:column; gap:8px;">
+        <div id="left-add-flow" style="display:flex; flex-direction:column; gap:8px;">
           <button class="btn btn-primary" id="btn-side-rect" style="justify-content:center;">＋ 矩形ノードを追加</button>
           <button class="btn" id="btn-side-container" style="justify-content:center;">＋ グループコンテナを追加</button>
           <button class="btn btn-memo" id="btn-side-memo" style="justify-content:center;">📝 仕様メモを追加</button>
         </div>
+        <div id="left-add-class" style="display:none; flex-direction:column; gap:8px;">
+          <button class="btn btn-purple" id="btn-side-class" style="justify-content:center;">🧩 クラスを追加</button>
+          <button class="btn" id="btn-side-class-cont" style="justify-content:center;">＋ パッケージ(コンテナ)追加</button>
+          <button class="btn btn-memo" id="btn-side-class-memo" style="justify-content:center;">📝 仕様メモを追加</button>
+        </div>
       </div>
+
+      <!-- タグ管理（タグごとの色設定） -->
+      <div class="panel-section">
+        <div class="panel-title">🏷️ タグ管理 (色設定)</div>
+        <div style="display:flex; gap:5px; margin-bottom:8px;">
+          <input type="text" id="new-tag-name" class="form-control" placeholder="新規タグ名" style="padding:4px 7px;">
+          <input type="color" id="new-tag-color" value="#3b82f6" style="width:32px; height:29px; border:none; background:none; cursor:pointer; flex-shrink:0;">
+          <button class="btn btn-primary" id="btn-create-tag" style="padding:4px 8px;">＋</button>
+        </div>
+        <div id="project-tag-list" class="tag-manage-list"></div>
+      </div>
+
       <div class="panel-section" style="flex:1;">
-        <div class="panel-title">階層ツリー構造</div>
+        <div class="panel-title">階層 ＆ クラス図ツリー</div>
         <div id="layer-tree"></div>
       </div>
     </aside>
@@ -71,6 +93,7 @@
     <!-- Canvas Area -->
     <main id="canvas-container">
       <div id="snap-indicator">🧲 Shift グリッドスナップ中 (24px)</div>
+      <div id="saving-banner">⏳ Firebaseへ保存しています...</div>
 
       <svg id="canvas-svg">
         <defs>
@@ -126,6 +149,7 @@
       <!-- 右クリック短押し時のコンテキストメニュー -->
       <div id="context-menu">
         <div class="ctx-item" id="ctx-add-rect">🟦 ここに矩形を生成</div>
+        <div class="ctx-item" id="ctx-add-class" style="display:none;">🧩 ここにクラスを生成</div>
         <div class="ctx-item" id="ctx-add-container">📦 ここにコンテナを生成</div>
         <div class="ctx-item" id="ctx-add-memo">📝 ここに仕様メモを生成</div>
         <div class="ctx-divider" id="ctx-child-divider" style="display:none;"></div>
@@ -133,6 +157,15 @@
         <div class="ctx-item" id="ctx-insert-on-edge" style="display:none;">➕ この矢印の間に矩形を生成</div>
         <div class="ctx-divider"></div>
         <div class="ctx-item" id="ctx-paste">📋 ここに貼り付け (Ctrl+V)</div>
+      </div>
+
+      <!-- ダブルクリック時の「周辺オブジェクト選択ポップアップ」 (密集した矢印・矩形の選択用) -->
+      <div id="nearby-picker">
+        <div class="nearby-header">
+          <span>🎯 周辺のオブジェクトを選択</span>
+          <button class="btn" id="btn-close-nearby" style="padding:1px 6px; font-size:11px;">✕</button>
+        </div>
+        <div id="nearby-list"></div>
       </div>
 
       <textarea id="inline-editor"></textarea>
@@ -145,10 +178,10 @@
       <div class="panel-section">
         <div class="panel-title">プロパティ編集</div>
         <div id="prop-empty" style="color:var(--text-sub); font-size:12px; line-height:1.6;">
-          キャンバス上の要素をクリックするか、右クリック短押しでオブジェクトを生成できます。
+          キャンバス上の要素をクリックするか、密集箇所をダブルクリックして周辺リストから選択できます。
         </div>
 
-        <!-- ノード・コンテナ・メモ用プロパティ -->
+        <!-- ノード・コンテナ・メモ・クラス用プロパティ -->
         <div id="prop-node" style="display:none;">
           <div id="prop-multi-badge" style="display:none; background:#1e3a8a; color:#93c5fd; padding:6px 10px; border-radius:5px; font-size:12px; margin-bottom:10px; font-weight:600;"></div>
           <div id="prop-proxy-notice" style="display:none; background:#374151; color:#fcd34d; padding:8px 10px; border-radius:6px; font-size:11px; margin-bottom:10px; line-height:1.5;">
@@ -162,11 +195,43 @@
           </div>
 
           <div class="form-group" id="prop-text-group">
-            <label>テキスト (ダブルクリックでも編集可)</label>
-            <textarea id="prop-text" class="form-control" rows="3" placeholder="テキストを入力..."></textarea>
+            <label id="prop-text-label">テキスト / 名前 (ダブルクリックでも編集可)</label>
+            <textarea id="prop-text" class="form-control" rows="2" placeholder="テキストを入力..."></textarea>
           </div>
 
-          <div class="form-group">
+          <!-- クラスノード専用：メンバ変数 ＆ 関数(メソッド) 編集 -->
+          <div class="sub-box" id="prop-class-box" style="display:none;">
+            <label style="font-size:11px; color:#c4b5fd; font-weight:700; display:block; margin-bottom:6px;">
+              🧩 クラス構造（変数・関数リスト）
+            </label>
+            <div class="form-group">
+              <label>メンバ変数 / フィールド</label>
+              <div style="display:flex; gap:4px; margin-bottom:6px;">
+                <input type="text" id="new-class-field" class="form-control" placeholder="例: + hp: int">
+                <button class="btn btn-primary" id="btn-add-class-field">追加</button>
+              </div>
+              <div id="class-field-list" class="member-edit-list"></div>
+            </div>
+
+            <div class="form-group" style="margin-bottom:0;">
+              <label>関数 / メソッド (リンク先として参照可能)</label>
+              <div style="display:flex; gap:4px; margin-bottom:6px;">
+                <input type="text" id="new-class-method" class="form-control" placeholder="例: + Attack(power): void">
+                <button class="btn btn-purple" id="btn-add-class-method">追加</button>
+              </div>
+              <div id="class-method-list" class="member-edit-list"></div>
+            </div>
+          </div>
+
+          <!-- タグ付与セクション -->
+          <div class="sub-box" id="prop-tags-box">
+            <label style="font-size:11px; color:#93c5fd; font-weight:700; display:block; margin-bottom:6px;">
+              🏷️ タグ設定（クリックでON/OFF）
+            </label>
+            <div id="node-tag-selector" class="node-tag-selector"></div>
+          </div>
+
+          <div class="form-group" id="prop-align-group">
             <label>文字揃え (左・中央・右)</label>
             <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px;">
               <button type="button" class="btn" id="prop-align-left" style="justify-content:center;">⬅ 左揃え</button>
@@ -212,9 +277,6 @@
             <select id="prop-memo-parent-select" class="form-control">
               <option value="">（親なし・独立メモ）</option>
             </select>
-            <div style="font-size:10px; color:var(--text-sub); margin-top:4px;">
-              親に設定した矩形や矢印が移動すると、このメモも一緒に追従します。
-            </div>
           </div>
 
           <div class="form-group" id="prop-add-child-memo-box">
@@ -223,16 +285,16 @@
             </button>
           </div>
 
-          <!-- リンクボタン設定 -->
+          <!-- リンクボタン設定（他ノード・クラス・クラス内の関数へジャンプ） -->
           <div class="sub-box" id="prop-link-box">
             <label style="font-size:11px; color:#c4b5fd; font-weight:700; display:block; margin-bottom:6px;">
-              🔗 参照リンクボタン設定（他要素へすぐ移動）
+              🔗 参照リンク設定（要素・クラス・関数へ移動）
             </label>
             <select id="prop-link-select" class="form-control" style="margin-bottom:6px;">
               <option value="">（リンクなし）</option>
             </select>
             <button class="btn btn-purple" id="btn-prop-jump-link" style="width:100%; justify-content:center; display:none;">
-              🚀 リンク先のオブジェクトへ今すぐ移動
+              🚀 リンク先へ今すぐジャンプ
             </button>
           </div>
 
@@ -260,7 +322,7 @@
               ➕ この矢印の間に矩形を生成
             </button>
             <div style="font-size:10px; color:var(--text-sub); line-height:1.4;">
-              ※矢印が伸びている元の矩形からサイズ・色・フォント設定を引き継いで中間に挿入します。
+              ※矢印が伸びている元の矩形からサイズ・色・フォント・タグ設定を引き継いで挿入します。
             </div>
           </div>
 
@@ -303,7 +365,6 @@
 
   <div id="toast"></div>
 
-  <!-- 分割した3つのJSモジュールを順番に読み込む -->
   <script src="/static/js/state.js"></script>
   <script src="/static/js/renderer.js"></script>
   <script src="/static/js/app.js"></script>

@@ -1,14 +1,20 @@
 /**************************************************************
- * state.js : プロジェクトデータ・エディタ状態・Undo/Redo履歴・座標計算
+ * state.js : プロジェクトデータ・タグ・クラス図構造・履歴・座標計算
  **************************************************************/
 const GRID_SIZE = 24;
 const snapToGrid = (val) => Math.round(val / GRID_SIZE) * GRID_SIZE;
 const uid = (prefix) => `${prefix}_${Math.random().toString(36).substring(2, 9)}`;
+const CLASS_LAYER_ID = "class_diagram";
 
 function createEmptyProject(projectId) {
   return {
     projectId: projectId,
     currentLayerId: "root",
+    tags: [
+      { id: "tag_sys", name: "システム", color: "#3b82f6" },
+      { id: "tag_ui",  name: "UI/演出",  color: "#10b981" },
+      { id: "tag_imp", name: "重要仕様", color: "#ef4444" }
+    ],
     layers: {
       "root": {
         id: "root",
@@ -20,9 +26,37 @@ function createEmptyProject(projectId) {
             id: "node_start", type: "rect", text: "",
             x: 240, y: 144, width: 192, height: 84,
             color: "#dbeafe", fontSize: 14, fontFamily: "'Segoe UI', 'Meiryo', sans-serif",
-            textAlign: "center",
+            textAlign: "center", tags: [],
             parentGroupId: null, childLayerId: null, locked: false, isParentProxy: false,
-            linkTargetNodeId: null, linkTargetLayerId: null
+            linkTargetNodeId: null, linkTargetLayerId: null, linkTargetMethodId: null
+          }
+        ],
+        edges: []
+      },
+      [CLASS_LAYER_ID]: {
+        id: CLASS_LAYER_ID,
+        name: "🧩 クラス図",
+        isClassDiagram: true,
+        parentLayerId: null,
+        parentNodeId: null,
+        nodes: [
+          {
+            id: "cls_sample",
+            type: "class",
+            text: "GameManager",
+            x: 216, y: 120, width: 240, height: 168,
+            color: "#f3e8ff", fontSize: 13, fontFamily: "'Consolas', 'Meiryo', monospace",
+            textAlign: "left", tags: [],
+            fields: [
+              { id: "fld_1", name: "+ currentTurn: int" },
+              { id: "fld_2", name: "- isPaused: bool" }
+            ],
+            methods: [
+              { id: "mtd_1", name: "+ StartGame(): void" },
+              { id: "mtd_2", name: "+ NextTurn(): void" }
+            ],
+            parentGroupId: null, childLayerId: null, locked: false, isParentProxy: false,
+            linkTargetNodeId: null, linkTargetLayerId: null, linkTargetMethodId: null
           }
         ],
         edges: []
@@ -33,11 +67,44 @@ function createEmptyProject(projectId) {
 
 let projectData = createEmptyProject("demo_project_01");
 
+// 既存保存データに tags や class_diagram が無い場合でも安全に補完する関数
+function ensureProjectStructure(data) {
+  if (!data.tags) {
+    data.tags = [
+      { id: "tag_sys", name: "システム", color: "#3b82f6" },
+      { id: "tag_ui",  name: "UI/演出",  color: "#10b981" },
+      { id: "tag_imp", name: "重要仕様", color: "#ef4444" }
+    ];
+  }
+  if (!data.layers) data.layers = {};
+  if (!data.layers[CLASS_LAYER_ID]) {
+    data.layers[CLASS_LAYER_ID] = {
+      id: CLASS_LAYER_ID,
+      name: "🧩 クラス図",
+      isClassDiagram: true,
+      parentLayerId: null,
+      parentNodeId: null,
+      nodes: [],
+      edges: []
+    };
+  }
+  Object.values(data.layers).forEach(layer => {
+    (layer.nodes || []).forEach(n => {
+      if (!Array.isArray(n.tags)) n.tags = [];
+      if (n.type === 'class') {
+        if (!Array.isArray(n.fields)) n.fields = [];
+        if (!Array.isArray(n.methods)) n.methods = [];
+      }
+    });
+  });
+}
+
 function isNodeLocked(node) {
   return Boolean(node && (node.locked || node.isParentProxy));
 }
 
 const currentLayer = () => projectData.layers[projectData.currentLayerId] || projectData.layers["root"];
+const isClassMode = () => projectData.currentLayerId === CLASS_LAYER_ID;
 
 /* --- Undo / Redo 履歴管理 --- */
 const MAX_HISTORY = 60;
@@ -74,6 +141,7 @@ function performUndo() {
   }
   redoStack.push(cloneState(projectData));
   projectData = undoStack.pop();
+  ensureProjectStructure(projectData);
   selectedNodeIds.clear();
   selectedEdgeId = null;
   updateUndoRedoButtons();
@@ -89,6 +157,7 @@ function performRedo() {
   }
   undoStack.push(cloneState(projectData));
   projectData = redoStack.pop();
+  ensureProjectStructure(projectData);
   selectedNodeIds.clear();
   selectedEdgeId = null;
   updateUndoRedoButtons();
@@ -103,13 +172,14 @@ function updateUndoRedoButtons() {
 
 /* --- エディタ操作状態 & DOM参照 --- */
 let panX = 0, panY = 0, zoom = 1;
+let lastFlowLayerId = "root"; // クラス図からフローチャートへ戻る際の記憶用
 let selectedNodeIds = new Set();
 let selectedEdgeId = null;
 let hoveredNodeId = null;
 let highlightedNodeId = null;
+let highlightedMethodId = null; // クラス内の特定メソッド行ハイライト用
 let clipboardData = null;
 
-// mode: 'none' | 'pan' | 'dragNodes' | 'resize' | 'connect' | 'quickCreate' | 'marquee'
 let mode = 'none';
 let primaryDragNodeId = null;
 let dragStartScreen = { x: 0, y: 0 };
@@ -123,6 +193,8 @@ let activeConnect = null;
 let marqueeRect = null;
 
 let lastClickInfo = { id: null, time: 0 };
+let lastCanvasClickTime = 0;
+let lastCanvasClickPos = { x: 0, y: 0 };
 let editingNodeId = null;
 
 const svg = document.getElementById('canvas-svg');
@@ -136,6 +208,7 @@ const memosLayer = document.getElementById('memos-layer');
 const uiLayer = document.getElementById('ui-layer');
 const miniToolbar = document.getElementById('mini-toolbar');
 const contextMenu = document.getElementById('context-menu');
+const nearbyPicker = document.getElementById('nearby-picker');
 const inlineEditor = document.getElementById('inline-editor');
 const projectModal = document.getElementById('project-modal');
 const snapIndicator = document.getElementById('snap-indicator');
@@ -150,6 +223,10 @@ function showToast(msg) {
 
 function hideContextMenu() {
   contextMenu.style.display = 'none';
+}
+
+function hideNearbyPicker() {
+  nearbyPicker.style.display = 'none';
 }
 
 function updateProjectHeaderAndUrl(projectId, pushHistory = true) {
@@ -182,7 +259,7 @@ function updateViewportTransform() {
   updateMiniToolbarPosition();
 }
 
-/* --- 幾何・アンカー・検索ヘルパー --- */
+/* --- 幾何・アンカー・検索・距離計算ヘルパー --- */
 function getPortCoords(node, port) {
   switch (port) {
     case 'top': return { x: node.x + node.width / 2, y: node.y };
@@ -218,6 +295,45 @@ function computeCurvePath(x1, y1, x2, y2, p1, p2) {
   return `M ${x1} ${y1} C ${x1 + o1.dx} ${y1 + o1.dy}, ${x2 + o2.dx} ${y2 + o2.dy}, ${x2} ${y2}`;
 }
 
+// 点(px, py)から矢印（3次ベジェ曲線）までの最短距離を計算（周辺オブジェクト検索用）
+function distanceToEdgeCurve(layer, edge, px, py) {
+  const src = layer.nodes.find(n => n.id === edge.source);
+  const tgt = layer.nodes.find(n => n.id === edge.target);
+  if (!src || !tgt) return Infinity;
+
+  const p1 = getPortCoords(src, edge.sourcePort);
+  const p2 = getPortCoords(tgt, edge.targetPort);
+  const dist = Math.max(40, Math.hypot(p2.x - p1.x, p2.y - p1.y) * 0.45);
+  const offset = (p) => {
+    if (p === 'top') return { dx: 0, dy: -dist };
+    if (p === 'bottom') return { dx: 0, dy: dist };
+    if (p === 'left') return { dx: -dist, dy: 0 };
+    return { dx: dist, dy: 0 };
+  };
+  const o1 = offset(edge.sourcePort), o2 = offset(edge.targetPort);
+  const c1x = p1.x + o1.dx, c1y = p1.y + o1.dy;
+  const c2x = p2.x + o2.dx, c2y = p2.y + o2.dy;
+
+  let minD = Infinity;
+  const steps = 24;
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const mt = 1 - t;
+    const bx = mt*mt*mt*p1.x + 3*mt*mt*t*c1x + 3*mt*t*t*c2x + t*t*t*p2.x;
+    const by = mt*mt*mt*p1.y + 3*mt*mt*t*c1y + 3*mt*t*t*c2y + t*t*t*p2.y;
+    const d = Math.hypot(px - bx, py - by);
+    if (d < minD) minD = d;
+  }
+  return minD;
+}
+
+// 点(px, py)から矩形までの最短距離を計算
+function distanceToNodeRect(node, px, py) {
+  const dx = Math.max(node.x - px, 0, px - (node.x + node.width));
+  const dy = Math.max(node.y - py, 0, py - (node.y + node.height));
+  return Math.hypot(dx, dy);
+}
+
 function getEdgeMidpoint(layer, edge) {
   const src = layer.nodes.find(n => n.id === edge.source);
   const tgt = layer.nodes.find(n => n.id === edge.target);
@@ -250,7 +366,7 @@ function findNodeAcrossProject(targetNodeId) {
 }
 
 function ensureParentProxyNode(layer) {
-  if (!layer || !layer.parentLayerId || !layer.parentNodeId) return;
+  if (!layer || layer.isClassDiagram || !layer.parentLayerId || !layer.parentNodeId) return;
   const parentLayer = projectData.layers[layer.parentLayerId];
   if (!parentLayer) return;
   const parentNode = parentLayer.nodes.find(n => n.id === layer.parentNodeId);
@@ -270,6 +386,7 @@ function ensureParentProxyNode(layer) {
       fontSize: parentNode.fontSize || 14,
       fontFamily: parentNode.fontFamily || "'Segoe UI', 'Meiryo', sans-serif",
       textAlign: parentNode.textAlign || 'center',
+      tags: Array.isArray(parentNode.tags) ? [...parentNode.tags] : [],
       parentGroupId: null,
       childLayerId: null,
       locked: true,
@@ -280,6 +397,7 @@ function ensureParentProxyNode(layer) {
     proxy.text = parentNode.text || '';
     proxy.color = parentNode.color || '#dbeafe';
     proxy.fontFamily = parentNode.fontFamily || "'Segoe UI', 'Meiryo', sans-serif";
+    proxy.tags = Array.isArray(parentNode.tags) ? [...parentNode.tags] : [];
     proxy.locked = true;
     proxy.isParentProxy = true;
   }
