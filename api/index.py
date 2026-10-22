@@ -3,19 +3,24 @@ import json
 from typing import Dict, Any, Optional
 from pathlib import Path
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 import firebase_admin
 from firebase_admin import credentials, firestore
 
-# ローカル開発用の .env 読み込み
 load_dotenv()
 
 app = FastAPI(title="FlowHierarchy Studio API")
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 INDEX_HTML_PATH = BASE_DIR / "templates" / "index.html"
+STATIC_DIR = BASE_DIR / "static"
 COLLECTION_NAME = "flowchart_projects"
+
+# ローカル uvicorn 用の static マウント
+if STATIC_DIR.exists():
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 def get_firestore_db():
     """Firebaseを安全に初期化してFirestoreクライアントを返す"""
@@ -57,13 +62,20 @@ async def list_projects_from_db():
                 "layerCount": len(layers) if isinstance(layers, dict) else 1,
                 "rootNodeCount": node_count
             })
-        # 更新日時の新しい順にソート
         projects.sort(key=lambda x: x["updatedAt"], reverse=True)
         return {"projects": projects}
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"一覧取得エラー: {str(e)}")
+
+@app.get("/static/{file_path:path}")
+async def serve_static_files(file_path: str):
+    """Vercel上で /static/... が api/index.py にルーティングされた場合も確実にファイルを返す"""
+    target_file = (STATIC_DIR / file_path).resolve()
+    if not str(target_file).startswith(str(STATIC_DIR.resolve())) or not target_file.is_file():
+        raise HTTPException(status_code=404, detail="Static file not found")
+    return FileResponse(target_file)
 
 @app.get("/")
 @app.get("/p/{path_project_id}")
@@ -74,11 +86,6 @@ async def serve_editor_or_api(
     project_id: Optional[str] = None,
     action: Optional[str] = None
 ):
-    """
-    - ?action=list の場合: プロジェクト一覧JSONを返す
-    - ?project_id=xxx の場合: 指定プロジェクトのJSONデータを返す
-    - / または /p/{プロジェクトID} への通常アクセスの場合: index.html を返す
-    """
     if action == "list":
         return await list_projects_from_db()
     if project_id:
@@ -93,7 +100,6 @@ async def api_list_projects():
 
 @app.get("/api/projects/{project_id}")
 async def load_project(project_id: str):
-    """指定したproject_idのデータをFirestoreから読み込む"""
     try:
         db = get_firestore_db()
         doc_ref = db.collection(COLLECTION_NAME).document(project_id)
@@ -120,7 +126,6 @@ async def save_project(
     path_project_id: Optional[str] = None,
     action: Optional[str] = None
 ):
-    """Firestore本番環境への保存（または action=delete で削除）"""
     try:
         target_id = project_id or payload.get("projectId") or path_project_id or "default_project"
         db = get_firestore_db()

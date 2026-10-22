@@ -1,0 +1,1303 @@
+/**************************************************************
+ * app.js : ユーザー操作・ノード生成・プロパティ編集・Firebase API通信
+ **************************************************************/
+
+function insertNodeBetweenEdge(edgeId) {
+  const layer = currentLayer();
+  const edgeIdx = layer.edges.findIndex(e => e.id === edgeId);
+  if (edgeIdx === -1) return;
+  const edge = layer.edges[edgeIdx];
+
+  const srcNode = layer.nodes.find(n => n.id === edge.source);
+  const tgtNode = layer.nodes.find(n => n.id === edge.target);
+  if (!srcNode || !tgtNode) return;
+
+  recordHistory();
+
+  const w = srcNode.type === 'rect' ? srcNode.width : 192;
+  const h = srcNode.type === 'rect' ? srcNode.height : 84;
+  const p1 = getPortCoords(srcNode, edge.sourcePort);
+  const p2 = getPortCoords(tgtNode, edge.targetPort);
+  const midX = (p1.x + p2.x) / 2;
+  const midY = (p1.y + p2.y) / 2;
+
+  const newNode = {
+    id: uid('node'),
+    type: 'rect',
+    text: '',
+    x: snapToGrid(midX - w / 2),
+    y: snapToGrid(midY - h / 2),
+    width: w,
+    height: h,
+    color: srcNode.isParentProxy ? '#dbeafe' : (srcNode.color || '#dbeafe'),
+    fontSize: srcNode.fontSize || 14,
+    fontFamily: srcNode.fontFamily || "'Segoe UI', 'Meiryo', sans-serif",
+    textAlign: srcNode.textAlign || 'center',
+    parentGroupId: srcNode.parentGroupId || null,
+    childLayerId: null,
+    locked: false,
+    isParentProxy: false,
+    linkTargetNodeId: null,
+    linkTargetLayerId: null
+  };
+
+  layer.nodes.push(newNode);
+
+  const inPort = getOppositePort(edge.sourcePort);
+  const outPort = edge.sourcePort;
+
+  const edge1 = {
+    id: uid('edge'),
+    source: edge.source,
+    sourcePort: edge.sourcePort,
+    target: newNode.id,
+    targetPort: inPort,
+    label: edge.label || '',
+    color: edge.color || '#475569'
+  };
+  const edge2 = {
+    id: uid('edge'),
+    source: newNode.id,
+    sourcePort: outPort,
+    target: edge.target,
+    targetPort: edge.targetPort,
+    label: '',
+    color: edge.color || '#475569'
+  };
+
+  layer.edges.splice(edgeIdx, 1, edge1, edge2);
+
+  layer.nodes.forEach(n => {
+    if (n.type === 'memo' && n.parentObjectType === 'edge' && n.parentObjectId === edge.id) {
+      n.parentObjectId = edge1.id;
+    }
+  });
+
+  selectedEdgeId = null;
+  selectedNodeIds.clear();
+  selectedNodeIds.add(newNode.id);
+  render();
+  showToast('➕ 矢印の間に矩形を生成しました（元矩形のプロパティを継承）');
+}
+
+/* --- マウスイベント --- */
+svg.addEventListener('contextmenu', (ev) => ev.preventDefault());
+
+window.addEventListener('mousedown', (ev) => {
+  if (ev.button === 3) {
+    ev.preventDefault();
+    ev.stopPropagation();
+    performUndo();
+  } else if (ev.button === 4) {
+    ev.preventDefault();
+    ev.stopPropagation();
+    performRedo();
+  }
+}, true);
+
+window.addEventListener('mouseup', (ev) => {
+  if (ev.button === 3 || ev.button === 4) {
+    ev.preventDefault();
+    ev.stopPropagation();
+  }
+}, true);
+
+svg.addEventListener('mousedown', (ev) => {
+  commitInlineEdit();
+  hideContextMenu();
+
+  if (ev.button === 2 || ev.button === 1) {
+    ev.preventDefault();
+    mode = 'pan';
+    rightClickPanMoved = false;
+    dragStartScreen = { x: ev.clientX, y: ev.clientY };
+    initialPan = { x: panX, y: panY };
+    return;
+  }
+
+  if (ev.button === 0) {
+    if (!ev.shiftKey) {
+      selectedNodeIds.clear();
+      selectedEdgeId = null;
+    }
+    mode = 'marquee';
+    dragStartWorld = screenToWorld(ev.clientX, ev.clientY);
+    marqueeRect = { x: dragStartWorld.x, y: dragStartWorld.y, w: 0, h: 0 };
+    render();
+  }
+});
+
+window.addEventListener('mousemove', (ev) => {
+  if (mode === 'none') return;
+
+  if (mode === 'pan') {
+    const dist = Math.hypot(ev.clientX - dragStartScreen.x, ev.clientY - dragStartScreen.y);
+    if (dist >= 5) {
+      rightClickPanMoved = true;
+      svg.classList.add('panning');
+    }
+    if (rightClickPanMoved) {
+      panX = initialPan.x + (ev.clientX - dragStartScreen.x);
+      panY = initialPan.y + (ev.clientY - dragStartScreen.y);
+      updateViewportTransform();
+    }
+    return;
+  }
+
+  const pt = screenToWorld(ev.clientX, ev.clientY);
+  const layer = currentLayer();
+
+  if (mode === 'dragNodes') {
+    let dx = pt.x - dragStartWorld.x;
+    let dy = pt.y - dragStartWorld.y;
+
+    if (ev.shiftKey && primaryDragNodeId && initialNodeStates.has(primaryDragNodeId)) {
+      snapIndicator.style.display = 'block';
+      const primaryInit = initialNodeStates.get(primaryDragNodeId);
+      const snappedX = snapToGrid(primaryInit.x + dx);
+      const snappedY = snapToGrid(primaryInit.y + dy);
+      dx = snappedX - primaryInit.x;
+      dy = snappedY - primaryInit.y;
+    } else {
+      snapIndicator.style.display = 'none';
+    }
+
+    initialNodeStates.forEach((init, id) => {
+      const n = layer.nodes.find(item => item.id === id);
+      if (n && !isNodeLocked(n)) {
+        n.x = Math.round(init.x + dx);
+        n.y = Math.round(init.y + dy);
+      }
+    });
+    render();
+  } else if (mode === 'resize' && activeResize) {
+    const n = layer.nodes.find(item => item.id === activeResize.nodeId);
+    const init = initialNodeStates.get(activeResize.nodeId);
+    if (n && init && !isNodeLocked(n)) {
+      const dx = pt.x - dragStartWorld.x;
+      const dy = pt.y - dragStartWorld.y;
+      const minW = 72, minH = 48;
+      const d = activeResize.dir;
+      const useSnap = ev.shiftKey;
+      snapIndicator.style.display = useSnap ? 'block' : 'none';
+
+      if (d.includes('e')) {
+        const rawW = init.width + dx;
+        n.width = Math.max(minW, useSnap ? snapToGrid(rawW) : Math.round(rawW));
+      }
+      if (d.includes('s')) {
+        const rawH = init.height + dy;
+        n.height = Math.max(minH, useSnap ? snapToGrid(rawH) : Math.round(rawH));
+      }
+      if (d.includes('w')) {
+        const rawW = init.width - dx;
+        const newW = Math.max(minW, useSnap ? snapToGrid(rawW) : Math.round(rawW));
+        n.x = init.x + (init.width - newW);
+        n.width = newW;
+      }
+      if (d.includes('n')) {
+        const rawH = init.height - dy;
+        const newH = Math.max(minH, useSnap ? snapToGrid(rawH) : Math.round(rawH));
+        n.y = init.y + (init.height - newH);
+        n.height = newH;
+      }
+      render();
+    }
+  } else if ((mode === 'connect' || mode === 'quickCreate') && activeConnect) {
+    activeConnect.currentX = ev.shiftKey ? snapToGrid(pt.x) : pt.x;
+    activeConnect.currentY = ev.shiftKey ? snapToGrid(pt.y) : pt.y;
+    render();
+  } else if (mode === 'marquee') {
+    const x = Math.min(dragStartWorld.x, pt.x);
+    const y = Math.min(dragStartWorld.y, pt.y);
+    const w = Math.abs(pt.x - dragStartWorld.x);
+    const h = Math.abs(pt.y - dragStartWorld.y);
+    marqueeRect = { x, y, w, h };
+
+    selectedNodeIds.clear();
+    layer.nodes.forEach(n => {
+      const intersects = !(
+        n.x > x + w ||
+        n.x + n.width < x ||
+        n.y > y + h ||
+        n.y + n.height < y
+      );
+      if (intersects) selectedNodeIds.add(n.id);
+    });
+    render();
+  }
+});
+
+function openContextMenuAt(clientX, clientY) {
+  const rect = svg.getBoundingClientRect();
+  contextMenuWorldPos = screenToWorld(clientX, clientY);
+
+  const hasSelection = (selectedNodeIds.size === 1 || selectedEdgeId !== null);
+  document.getElementById('ctx-child-divider').style.display = hasSelection ? 'block' : 'none';
+  document.getElementById('ctx-add-child-memo').style.display = hasSelection ? 'flex' : 'none';
+  document.getElementById('ctx-insert-on-edge').style.display = selectedEdgeId ? 'flex' : 'none';
+
+  contextMenu.style.display = 'flex';
+  const menuW = 220, menuH = 190;
+  const left = Math.min(rect.width - menuW - 8, Math.max(8, clientX - rect.left));
+  const top = Math.min(rect.height - menuH - 8, Math.max(8, clientY - rect.top));
+  contextMenu.style.left = `${left}px`;
+  contextMenu.style.top = `${top}px`;
+}
+
+function spawnConnectedNode(sourceNode, sourcePort, dropX, dropY, isClickOnly = false) {
+  const layer = currentLayer();
+  const w = sourceNode.type === 'rect' ? sourceNode.width : 192;
+  const h = sourceNode.type === 'rect' ? sourceNode.height : 84;
+  let pos;
+
+  if (isClickOnly) {
+    const gap = 96;
+    if (sourcePort === 'right') pos = { x: sourceNode.x + sourceNode.width + gap, y: sourceNode.y + (sourceNode.height - h) / 2 };
+    else if (sourcePort === 'left') pos = { x: sourceNode.x - w - gap, y: sourceNode.y + (sourceNode.height - h) / 2 };
+    else if (sourcePort === 'bottom') pos = { x: sourceNode.x + (sourceNode.width - w) / 2, y: sourceNode.y + sourceNode.height + gap };
+    else pos = { x: sourceNode.x + (sourceNode.width - w) / 2, y: sourceNode.y - h - gap };
+  } else {
+    pos = computeNewNodePosFromCursor(dropX, dropY, sourcePort, w, h);
+  }
+
+  const newNode = {
+    id: uid('node'),
+    type: 'rect',
+    text: '',
+    x: snapToGrid(pos.x),
+    y: snapToGrid(pos.y),
+    width: w,
+    height: h,
+    color: sourceNode.isParentProxy ? '#dbeafe' : (sourceNode.color || '#dbeafe'),
+    fontSize: sourceNode.fontSize || 14,
+    fontFamily: sourceNode.fontFamily || "'Segoe UI', 'Meiryo', sans-serif",
+    textAlign: sourceNode.textAlign || 'center',
+    parentGroupId: null,
+    childLayerId: null,
+    locked: false,
+    isParentProxy: false,
+    linkTargetNodeId: null,
+    linkTargetLayerId: null
+  };
+
+  const containers = layer.nodes.filter(n => n.type === 'container');
+  const cx = newNode.x + newNode.width / 2;
+  const cy = newNode.y + newNode.height / 2;
+  const hitCont = containers.find(c => cx >= c.x && cx <= c.x + c.width && cy >= c.y && cy <= c.y + c.height);
+  if (hitCont) newNode.parentGroupId = hitCont.id;
+
+  layer.nodes.push(newNode);
+
+  const targetPort = getOppositePort(sourcePort);
+  layer.edges.push({
+    id: uid('edge'),
+    source: sourceNode.id,
+    sourcePort: sourcePort,
+    target: newNode.id,
+    targetPort: targetPort,
+    label: '',
+    color: '#475569'
+  });
+
+  selectedNodeIds.clear();
+  selectedNodeIds.add(newNode.id);
+  selectedEdgeId = null;
+  showToast('✨ 新規矩形を生成して矢印を接続しました');
+}
+
+window.addEventListener('mouseup', (ev) => {
+  if (mode === 'none') return;
+  const layer = currentLayer();
+  snapIndicator.style.display = 'none';
+
+  if (mode === 'pan') {
+    svg.classList.remove('panning');
+    if (ev.button === 2 && !rightClickPanMoved) {
+      openContextMenuAt(ev.clientX, ev.clientY);
+    }
+  } else if (mode === 'dragNodes') {
+    let moved = false;
+    initialNodeStates.forEach((init, id) => {
+      const n = layer.nodes.find(item => item.id === id);
+      if (n && (n.x !== init.x || n.y !== init.y)) moved = true;
+    });
+
+    const containers = layer.nodes.filter(n => n.type === 'container');
+    selectedNodeIds.forEach(id => {
+      const node = layer.nodes.find(n => n.id === id);
+      if (node && node.type !== 'container' && !isNodeLocked(node)) {
+        const cx = node.x + node.width / 2;
+        const cy = node.y + node.height / 2;
+        const hitCont = containers.find(c =>
+          cx >= c.x && cx <= c.x + c.width && cy >= c.y && cy <= c.y + c.height
+        );
+        node.parentGroupId = hitCont ? hitCont.id : null;
+
+        if (node.type === 'memo' && node.parentObjectType && node.parentObjectId) {
+          const anchor = getParentAnchorPoint(layer, node.parentObjectType, node.parentObjectId);
+          if (anchor) {
+            node.offsetX = node.x - anchor.x;
+            node.offsetY = node.y - anchor.y;
+          }
+        }
+      }
+    });
+
+    if (moved && dragSnapshotBefore) {
+      recordHistory(dragSnapshotBefore);
+    }
+    dragSnapshotBefore = null;
+  } else if (mode === 'resize' && activeResize) {
+    if (dragSnapshotBefore) {
+      recordHistory(dragSnapshotBefore);
+    }
+    dragSnapshotBefore = null;
+  } else if ((mode === 'connect' || mode === 'quickCreate') && activeConnect) {
+    const pt = screenToWorld(ev.clientX, ev.clientY);
+    const srcNode = layer.nodes.find(n => n.id === activeConnect.sourceId);
+
+    const target = layer.nodes.find(n =>
+      n.id !== activeConnect.sourceId &&
+      n.type !== 'memo' &&
+      pt.x >= n.x - 16 && pt.x <= n.x + n.width + 16 &&
+      pt.y >= n.y - 16 && pt.y <= n.y + n.height + 16
+    );
+
+    if (target && mode === 'connect') {
+      recordHistory();
+      const targetPort = detectClosestPort(target, pt.x, pt.y);
+      layer.edges.push({
+        id: uid('edge'),
+        source: activeConnect.sourceId,
+        sourcePort: activeConnect.sourcePort,
+        target: target.id,
+        targetPort,
+        label: '',
+        color: '#475569'
+      });
+    } else if (srcNode) {
+      const dragDist = Math.hypot(pt.x - dragStartWorld.x, pt.y - dragStartWorld.y);
+      if (mode === 'quickCreate') {
+        recordHistory();
+        const isClickOnly = dragDist < 18;
+        spawnConnectedNode(srcNode, activeConnect.sourcePort, activeConnect.currentX, activeConnect.currentY, isClickOnly);
+      } else if (mode === 'connect') {
+        const p1 = getPortCoords(srcNode, activeConnect.sourcePort);
+        if (Math.hypot(pt.x - p1.x, pt.y - p1.y) > 45) {
+          recordHistory();
+          spawnConnectedNode(srcNode, activeConnect.sourcePort, pt.x, pt.y, false);
+        }
+      }
+    }
+    activeConnect = null;
+  }
+
+  mode = 'none';
+  primaryDragNodeId = null;
+  activeResize = null;
+  marqueeRect = null;
+  render();
+});
+
+function detectClosestPort(node, x, y) {
+  const candidates = ['top', 'right', 'bottom', 'left'].map(k => {
+    const c = getPortCoords(node, k);
+    return { key: k, dist: Math.hypot(c.x - x, c.y - y) };
+  });
+  candidates.sort((a, b) => a.dist - b.dist);
+  return candidates[0].key;
+}
+
+svg.addEventListener('wheel', (ev) => {
+  ev.preventDefault();
+  commitInlineEdit();
+  hideContextMenu();
+  const factor = ev.deltaY < 0 ? 1.1 : 0.9;
+  const newZoom = Math.min(2.8, Math.max(0.25, zoom * factor));
+  const rect = svg.getBoundingClientRect();
+  const mx = ev.clientX - rect.left;
+  const my = ev.clientY - rect.top;
+
+  panX = mx - (mx - panX) * (newZoom / zoom);
+  panY = my - (my - panY) * (newZoom / zoom);
+  zoom = newZoom;
+  updateViewportTransform();
+}, { passive: false });
+
+/* --- インライン編集・ミニツールバー --- */
+miniToolbar.addEventListener('mousedown', (ev) => ev.stopPropagation());
+contextMenu.addEventListener('mousedown', (ev) => ev.stopPropagation());
+inlineEditor.addEventListener('mousedown', (ev) => ev.stopPropagation());
+
+function toggleLockSelection() {
+  const layer = currentLayer();
+  const targetNodes = layer.nodes.filter(n => selectedNodeIds.has(n.id) && !n.isParentProxy);
+  if (targetNodes.length === 0) {
+    showToast('ロックを切り替える要素を選択してください');
+    return;
+  }
+  recordHistory();
+  const anyUnlocked = targetNodes.some(n => !n.locked);
+  targetNodes.forEach(n => n.locked = anyUnlocked);
+  render();
+  showToast(anyUnlocked ? '🔒 選択要素をロックしました' : '🔓 ロックを解除しました');
+}
+
+function startInlineEdit(node) {
+  if (isNodeLocked(node)) return;
+  editingNodeId = node.id;
+  selectedNodeIds.clear();
+  selectedNodeIds.add(node.id);
+  render();
+
+  inlineEditor.style.display = 'block';
+  inlineEditor.style.left = `${ panX + node.x * zoom }px`;
+  inlineEditor.style.top = `${ panY + node.y * zoom }px`;
+  inlineEditor.style.width = `${ node.width * zoom }px`;
+  inlineEditor.style.height = `${ (node.type === 'container' ? 34 : node.height) * zoom }px`;
+  inlineEditor.style.fontSize = `${ (node.fontSize || 14) * zoom }px`;
+  inlineEditor.style.fontFamily = node.fontFamily || "'Segoe UI', 'Meiryo', sans-serif";
+  inlineEditor.style.textAlign = node.textAlign || (node.type === 'memo' ? 'left' : 'center');
+  inlineEditor.value = node.text || '';
+  inlineEditor.focus();
+  inlineEditor.select();
+}
+
+function commitInlineEdit() {
+  if (!editingNodeId) return;
+  const node = currentLayer().nodes.find(n => n.id === editingNodeId);
+  if (node && !isNodeLocked(node) && node.text !== inlineEditor.value) {
+    recordHistory();
+    node.text = inlineEditor.value;
+    if (node.childLayerId && projectData.layers[node.childLayerId]) {
+      projectData.layers[node.childLayerId].name = node.text || '無題の階層';
+    }
+  }
+  editingNodeId = null;
+  inlineEditor.style.display = 'none';
+  render();
+}
+
+inlineEditor.addEventListener('keydown', (ev) => {
+  if (ev.key === 'Enter' && !ev.shiftKey) {
+    ev.preventDefault();
+    commitInlineEdit();
+  } else if (ev.key === 'Escape') {
+    editingNodeId = null;
+    inlineEditor.style.display = 'none';
+    render();
+  }
+});
+
+function setTextAlignment(align) {
+  applyToSelectedNodes(n => n.textAlign = align, true);
+}
+
+function updateMiniToolbarPosition() {
+  const layer = currentLayer();
+  if (!layer) return;
+  const selectedNodes = layer.nodes.filter(n => selectedNodeIds.has(n.id));
+  if (selectedNodes.length === 0) {
+    miniToolbar.style.display = 'none';
+    return;
+  }
+
+  const minX = Math.min(...selectedNodes.map(n => n.x));
+  const maxX = Math.max(...selectedNodes.map(n => n.x + n.width));
+  const minY = Math.min(...selectedNodes.map(n => n.y));
+
+  const centerX = ((minX + maxX) / 2) * zoom + panX;
+  const topY = minY * zoom + panY;
+
+  miniToolbar.style.display = 'flex';
+  miniToolbar.style.left = `${centerX}px`;
+  miniToolbar.style.top = `${Math.max(48, topY)}px`;
+
+  const first = selectedNodes[0];
+  const allLocked = selectedNodes.every(n => isNodeLocked(n));
+  const lockBtn = document.getElementById('mt-lock');
+  lockBtn.textContent = allLocked ? '🔒' : '🔓';
+  lockBtn.className = allLocked ? 'btn btn-warning' : 'btn';
+  lockBtn.disabled = selectedNodes.every(n => n.isParentProxy);
+
+  document.getElementById('mt-font').value = first.fontFamily || "'Segoe UI', 'Meiryo', sans-serif";
+  document.getElementById('mt-font-slider').value = first.fontSize || 14;
+  document.getElementById('mt-font-val').textContent = `${first.fontSize || 14}px`;
+  document.getElementById('mt-color').value = first.color || (first.type === 'memo' ? '#fef08a' : '#dbeafe');
+
+  const curAlign = first.textAlign || (first.type === 'memo' ? 'left' : 'center');
+  ['left', 'center', 'right'].forEach(a => {
+    document.getElementById(`mt-align-${a}`).classList.toggle('active', curAlign === a);
+  });
+}
+
+function applyToSelectedNodes(fn, shouldRecord = true) {
+  const layer = currentLayer();
+  const editable = layer.nodes.filter(n => selectedNodeIds.has(n.id) && !isNodeLocked(n));
+  if (editable.length === 0) {
+    showToast('🔒 ロック中のため変更できません');
+    return;
+  }
+  if (shouldRecord) recordHistory();
+  editable.forEach(n => fn(n));
+  render();
+}
+
+document.getElementById('mt-lock').addEventListener('click', toggleLockSelection);
+document.getElementById('btn-lock-toggle').addEventListener('click', toggleLockSelection);
+document.getElementById('prop-lock-btn').addEventListener('click', toggleLockSelection);
+
+document.getElementById('mt-align-left').addEventListener('click', () => setTextAlignment('left'));
+document.getElementById('mt-align-center').addEventListener('click', () => setTextAlignment('center'));
+document.getElementById('mt-align-right').addEventListener('click', () => setTextAlignment('right'));
+document.getElementById('prop-align-left').addEventListener('click', () => setTextAlignment('left'));
+document.getElementById('prop-align-center').addEventListener('click', () => setTextAlignment('center'));
+document.getElementById('prop-align-right').addEventListener('click', () => setTextAlignment('right'));
+
+document.getElementById('mt-font').addEventListener('change', (e) => applyToSelectedNodes(n => n.fontFamily = e.target.value));
+document.getElementById('mt-font-slider').addEventListener('change', (e) => applyToSelectedNodes(n => n.fontSize = parseInt(e.target.value, 10)));
+document.getElementById('mt-font-slider').addEventListener('input', (e) => applyToSelectedNodes(n => n.fontSize = parseInt(e.target.value, 10), false));
+document.getElementById('mt-font-dec').addEventListener('click', () => applyToSelectedNodes(n => n.fontSize = Math.max(8, (n.fontSize || 14) - 2)));
+document.getElementById('mt-font-inc').addEventListener('click', () => applyToSelectedNodes(n => n.fontSize = Math.min(72, (n.fontSize || 14) + 2)));
+document.getElementById('mt-color').addEventListener('change', (e) => applyToSelectedNodes(n => n.color = e.target.value));
+document.getElementById('mt-color').addEventListener('input', (e) => applyToSelectedNodes(n => n.color = e.target.value, false));
+document.getElementById('mt-add-child-memo').addEventListener('click', () => addChildMemoToCurrentSelection());
+document.getElementById('mt-copy').addEventListener('click', () => { copySelection(); pasteSelection(); });
+document.getElementById('mt-del').addEventListener('click', () => deleteSelection());
+
+/* --- コピー・貼り付け・削除・ショートカット --- */
+function deepCloneLayer(sourceLayerId, newParentLayerId, newParentNodeId) {
+  const orig = projectData.layers[sourceLayerId];
+  if (!orig) return null;
+  const newLayerId = uid('layer');
+  const idMap = new Map();
+
+  const clonedNodes = orig.nodes.map(n => {
+    const newId = n.isParentProxy ? `parent_proxy_${newLayerId}` : uid(n.type === 'container' ? 'cont' : (n.type === 'memo' ? 'memo' : 'node'));
+    idMap.set(n.id, newId);
+    return { ...JSON.parse(JSON.stringify(n)), id: newId };
+  });
+
+  clonedNodes.forEach(n => {
+    if (n.parentGroupId && idMap.has(n.parentGroupId)) {
+      n.parentGroupId = idMap.get(n.parentGroupId);
+    }
+    if (n.parentObjectType === 'node' && n.parentObjectId && idMap.has(n.parentObjectId)) {
+      n.parentObjectId = idMap.get(n.parentObjectId);
+    }
+    if (n.childLayerId) {
+      n.childLayerId = deepCloneLayer(n.childLayerId, newLayerId, n.id);
+    }
+  });
+
+  const clonedEdges = orig.edges.map(e => ({
+    ...JSON.parse(JSON.stringify(e)),
+    id: uid('edge'),
+    source: idMap.get(e.source) || e.source,
+    target: idMap.get(e.target) || e.target
+  }));
+
+  projectData.layers[newLayerId] = {
+    id: newLayerId,
+    name: orig.name,
+    parentLayerId: newParentLayerId,
+    parentNodeId: newParentNodeId,
+    nodes: clonedNodes,
+    edges: clonedEdges
+  };
+  return newLayerId;
+}
+
+function copySelection() {
+  const layer = currentLayer();
+  if (selectedNodeIds.size === 0) return;
+
+  const targetIds = new Set();
+  selectedNodeIds.forEach(id => {
+    const n = layer.nodes.find(item => item.id === id);
+    if (n && !n.isParentProxy) {
+      targetIds.add(n.id);
+      if (n.type === 'container') {
+        layer.nodes.filter(ch => ch.parentGroupId === n.id && !ch.isParentProxy).forEach(ch => targetIds.add(ch.id));
+      }
+      layer.nodes.filter(m => m.type === 'memo' && m.parentObjectType === 'node' && m.parentObjectId === n.id)
+        .forEach(m => targetIds.add(m.id));
+    }
+  });
+
+  const nodesToCopy = layer.nodes.filter(n => targetIds.has(n.id));
+  if (nodesToCopy.length === 0) return showToast('親階層アンカーノードはコピーできません');
+  const edgesToCopy = layer.edges.filter(e => targetIds.has(e.source) && targetIds.has(e.target));
+
+  clipboardData = {
+    nodes: JSON.parse(JSON.stringify(nodesToCopy)),
+    edges: JSON.parse(JSON.stringify(edgesToCopy))
+  };
+  showToast(`${nodesToCopy.length}個の要素をコピーしました`);
+}
+
+function pasteSelection(customBasePos = null) {
+  if (!clipboardData || clipboardData.nodes.length === 0) return;
+  recordHistory();
+  const layer = currentLayer();
+  const idMap = new Map();
+  const newSelected = new Set();
+
+  const minX = Math.min(...clipboardData.nodes.map(n => n.x));
+  const minY = Math.min(...clipboardData.nodes.map(n => n.y));
+  const offsetX = customBasePos ? snapToGrid(customBasePos.x - minX) : GRID_SIZE;
+  const offsetY = customBasePos ? snapToGrid(customBasePos.y - minY) : GRID_SIZE;
+
+  const newNodes = clipboardData.nodes.map(n => {
+    const newId = uid(n.type === 'container' ? 'cont' : (n.type === 'memo' ? 'memo' : 'node'));
+    idMap.set(n.id, newId);
+    newSelected.add(newId);
+    return {
+      ...JSON.parse(JSON.stringify(n)),
+      id: newId,
+      x: n.x + offsetX,
+      y: n.y + offsetY,
+      isParentProxy: false
+    };
+  });
+
+  newNodes.forEach(n => {
+    if (n.parentGroupId) {
+      n.parentGroupId = idMap.get(n.parentGroupId) || n.parentGroupId;
+    }
+    if (n.parentObjectType === 'node' && n.parentObjectId) {
+      n.parentObjectId = idMap.get(n.parentObjectId) || n.parentObjectId;
+    }
+    if (n.childLayerId && projectData.layers[n.childLayerId]) {
+      n.childLayerId = deepCloneLayer(n.childLayerId, layer.id, n.id);
+    }
+    layer.nodes.push(n);
+  });
+
+  clipboardData.edges.forEach(e => {
+    if (idMap.has(e.source) && idMap.has(e.target)) {
+      layer.edges.push({
+        ...JSON.parse(JSON.stringify(e)),
+        id: uid('edge'),
+        source: idMap.get(e.source),
+        target: idMap.get(e.target)
+      });
+    }
+  });
+
+  selectedNodeIds = newSelected;
+  render();
+  showToast('貼り付けました');
+}
+
+function deleteSelection() {
+  const layer = currentLayer();
+  if (selectedNodeIds.size > 0) {
+    const deletableIds = new Set(
+      [...selectedNodeIds].filter(id => {
+        const n = layer.nodes.find(item => item.id === id);
+        return n && !isNodeLocked(n);
+      })
+    );
+    if (deletableIds.size === 0) {
+      showToast('🔒 ロック中（または親階層ノード）のため削除できません');
+      return;
+    }
+    recordHistory();
+    layer.nodes = layer.nodes.filter(n => !deletableIds.has(n.id));
+    layer.edges = layer.edges.filter(e => !deletableIds.has(e.source) && !deletableIds.has(e.target));
+    selectedNodeIds.clear();
+    render();
+  } else if (selectedEdgeId) {
+    recordHistory();
+    layer.edges = layer.edges.filter(e => e.id !== selectedEdgeId);
+    selectedEdgeId = null;
+    render();
+  }
+}
+
+window.addEventListener('keydown', (ev) => {
+  const key = ev.key.toLowerCase();
+
+  if ((ev.ctrlKey || ev.metaKey) && key === 's') {
+    ev.preventDefault();
+    commitInlineEdit();
+    saveCurrentProject();
+    return;
+  }
+
+  if (editingNodeId || ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) return;
+
+  if ((ev.ctrlKey || ev.metaKey) && key === 'z') {
+    ev.preventDefault();
+    if (ev.shiftKey) performRedo();
+    else performUndo();
+  } else if ((ev.ctrlKey || ev.metaKey) && key === 'y') {
+    ev.preventDefault();
+    performRedo();
+  } else if ((ev.ctrlKey || ev.metaKey) && key === 'l') {
+    ev.preventDefault();
+    toggleLockSelection();
+  } else if ((ev.ctrlKey || ev.metaKey) && key === 'c') {
+    ev.preventDefault();
+    copySelection();
+  } else if ((ev.ctrlKey || ev.metaKey) && key === 'v') {
+    ev.preventDefault();
+    pasteSelection();
+  } else if (ev.key === 'Delete' || ev.key === 'Backspace') {
+    ev.preventDefault();
+    deleteSelection();
+  }
+});
+
+/* --- 右パネル＆プロパティ制御 --- */
+function populateMemoParentOptions(memoNode) {
+  const select = document.getElementById('prop-memo-parent-select');
+  const layer = currentLayer();
+  select.innerHTML = '<option value="">（親なし・独立メモ）</option>';
+
+  layer.nodes.filter(n => n.id !== memoNode.id && n.type !== 'memo').forEach(n => {
+    const opt = document.createElement('option');
+    opt.value = `node:${n.id}`;
+    const label = n.text ? n.text.slice(0, 18) : n.id;
+    opt.textContent = `🟦 矩形/コンテナ: ${label}`;
+    if (memoNode.parentObjectType === 'node' && memoNode.parentObjectId === n.id) opt.selected = true;
+    select.appendChild(opt);
+  });
+
+  layer.edges.forEach((e, idx) => {
+    const src = layer.nodes.find(n => n.id === e.source);
+    const tgt = layer.nodes.find(n => n.id === e.target);
+    const sName = src ? (src.text || src.id).slice(0, 8) : '?';
+    const tName = tgt ? (tgt.text || tgt.id).slice(0, 8) : '?';
+    const opt = document.createElement('option');
+    opt.value = `edge:${e.id}`;
+    opt.textContent = `↗ 矢印#${idx + 1}: ${sName} ➔ ${tName}`;
+    if (memoNode.parentObjectType === 'edge' && memoNode.parentObjectId === e.id) opt.selected = true;
+    select.appendChild(opt);
+  });
+}
+
+function populateLinkTargetOptions(currentNode) {
+  const select = document.getElementById('prop-link-select');
+  select.innerHTML = '<option value="">（リンクなし）</option>';
+
+  Object.values(projectData.layers).forEach(layer => {
+    layer.nodes.forEach(n => {
+      if (n.id === currentNode.id || n.isParentProxy) return;
+      const opt = document.createElement('option');
+      opt.value = n.id;
+      const typeIcon = n.type === 'container' ? '📦' : (n.type === 'memo' ? '📝' : '🟦');
+      const name = n.text ? n.text.slice(0, 18) : `(無題:${n.id})`;
+      opt.textContent = `[${layer.name || '階層'}] ${typeIcon} ${name}`;
+      if (currentNode.linkTargetNodeId === n.id) opt.selected = true;
+      select.appendChild(opt);
+    });
+  });
+
+  const jumpBtn = document.getElementById('btn-prop-jump-link');
+  jumpBtn.style.display = currentNode.linkTargetNodeId ? 'inline-flex' : 'none';
+}
+
+function updatePropertyPanel() {
+  const emptyEl = document.getElementById('prop-empty');
+  const nodeEl = document.getElementById('prop-node');
+  const edgeEl = document.getElementById('prop-edge');
+  const layer = currentLayer();
+  if (!layer) return;
+
+  if (selectedNodeIds.size > 0) {
+    emptyEl.style.display = 'none';
+    nodeEl.style.display = 'block';
+    edgeEl.style.display = 'none';
+
+    const selectedNodes = layer.nodes.filter(n => selectedNodeIds.has(n.id));
+    const first = selectedNodes[0];
+    const multiBadge = document.getElementById('prop-multi-badge');
+    const proxyNotice = document.getElementById('prop-proxy-notice');
+    const lockBtn = document.getElementById('prop-lock-btn');
+    const locked = selectedNodes.every(n => isNodeLocked(n));
+    const isProxy = selectedNodes.some(n => n.isParentProxy);
+
+    proxyNotice.style.display = isProxy ? 'block' : 'none';
+    lockBtn.style.display = isProxy ? 'none' : 'inline-flex';
+    lockBtn.textContent = locked ? '🔒 ロック中 (クリックで解除 / Ctrl+L)' : '🔓 編集・移動をロックする (Ctrl+L)';
+    lockBtn.className = locked ? 'btn btn-warning' : 'btn';
+
+    const curAlign = first.textAlign || (first.type === 'memo' ? 'left' : 'center');
+    ['left', 'center', 'right'].forEach(a => {
+      document.getElementById(`prop-align-${a}`).classList.toggle('active-btn', curAlign === a);
+    });
+
+    if (selectedNodes.length > 1) {
+      multiBadge.style.display = 'block';
+      multiBadge.textContent = `${selectedNodes.length} 個の要素を一括選択中`;
+      document.getElementById('prop-text-group').style.display = 'none';
+      document.getElementById('prop-pos-group').style.display = 'none';
+      document.getElementById('prop-memo-parent-box').style.display = 'none';
+      document.getElementById('prop-add-child-memo-box').style.display = 'none';
+      document.getElementById('prop-link-box').style.display = 'none';
+      document.getElementById('btn-enter-layer').style.display = 'none';
+    } else {
+      multiBadge.style.display = 'none';
+      document.getElementById('prop-text-group').style.display = 'block';
+      document.getElementById('prop-pos-group').style.display = 'grid';
+      document.getElementById('prop-text').value = first.text || '';
+      document.getElementById('prop-w').value = first.width;
+      document.getElementById('prop-h').value = first.height;
+
+      const isMemo = first.type === 'memo';
+      document.getElementById('prop-memo-parent-box').style.display = isMemo ? 'block' : 'none';
+      document.getElementById('prop-add-child-memo-box').style.display = isMemo ? 'none' : 'block';
+      document.getElementById('prop-link-box').style.display = first.isParentProxy ? 'none' : 'block';
+      document.getElementById('btn-enter-layer').style.display = (first.type !== 'rect' || first.isParentProxy) ? 'none' : 'inline-flex';
+
+      if (isMemo) populateMemoParentOptions(first);
+      if (!first.isParentProxy) populateLinkTargetOptions(first);
+    }
+
+    ['prop-text', 'prop-color', 'prop-fontsize', 'prop-fontfamily', 'prop-w', 'prop-h'].forEach(id => {
+      document.getElementById(id).disabled = locked;
+    });
+
+    document.getElementById('prop-color').value = first.color || (first.type === 'memo' ? '#fef08a' : '#dbeafe');
+    document.getElementById('prop-fontsize').value = first.fontSize || 14;
+    document.getElementById('prop-fontfamily').value = first.fontFamily || "'Segoe UI', 'Meiryo', sans-serif";
+  } else if (selectedEdgeId) {
+    const edge = layer.edges.find(e => e.id === selectedEdgeId);
+    if (edge) {
+      emptyEl.style.display = 'none';
+      nodeEl.style.display = 'none';
+      edgeEl.style.display = 'block';
+      document.getElementById('prop-edge-label').value = edge.label || '';
+      document.getElementById('prop-edge-color').value = edge.color || '#475569';
+    }
+  } else {
+    emptyEl.style.display = 'block';
+    nodeEl.style.display = 'none';
+    edgeEl.style.display = 'none';
+  }
+}
+
+document.getElementById('prop-text').addEventListener('change', (e) => {
+  applyToSelectedNodes(n => {
+    n.text = e.target.value;
+    if (n.childLayerId && projectData.layers[n.childLayerId]) {
+      projectData.layers[n.childLayerId].name = n.text || 'サブ階層';
+    }
+  }, true);
+});
+document.getElementById('prop-text').addEventListener('input', (e) => {
+  applyToSelectedNodes(n => {
+    n.text = e.target.value;
+    if (n.childLayerId && projectData.layers[n.childLayerId]) {
+      projectData.layers[n.childLayerId].name = n.text || 'サブ階層';
+    }
+  }, false);
+});
+document.getElementById('prop-color').addEventListener('change', (e) => applyToSelectedNodes(n => n.color = e.target.value, true));
+document.getElementById('prop-color').addEventListener('input', (e) => applyToSelectedNodes(n => n.color = e.target.value, false));
+document.getElementById('prop-fontsize').addEventListener('change', (e) => applyToSelectedNodes(n => n.fontSize = parseInt(e.target.value, 10) || 14, true));
+document.getElementById('prop-fontfamily').addEventListener('change', (e) => applyToSelectedNodes(n => n.fontFamily = e.target.value, true));
+document.getElementById('prop-w').addEventListener('change', (e) => applyToSelectedNodes(n => n.width = Math.max(60, parseInt(e.target.value, 10) || 160), true));
+document.getElementById('prop-h').addEventListener('change', (e) => applyToSelectedNodes(n => n.height = Math.max(40, parseInt(e.target.value, 10) || 80), true));
+
+document.getElementById('prop-memo-parent-select').addEventListener('change', (e) => {
+  const layer = currentLayer();
+  const memo = layer.nodes.find(n => selectedNodeIds.has(n.id) && n.type === 'memo');
+  if (!memo) return;
+  recordHistory();
+  const val = e.target.value;
+  if (!val) {
+    memo.parentObjectType = null;
+    memo.parentObjectId = null;
+    memo.offsetX = null;
+    memo.offsetY = null;
+  } else {
+    const [pType, pId] = val.split(':');
+    memo.parentObjectType = pType;
+    memo.parentObjectId = pId;
+    const anchor = getParentAnchorPoint(layer, pType, pId);
+    if (anchor) {
+      memo.offsetX = memo.x - anchor.x;
+      memo.offsetY = memo.y - anchor.y;
+    }
+  }
+  render();
+  showToast('📎 メモの親オブジェクト設定を更新しました');
+});
+
+document.getElementById('prop-link-select').addEventListener('change', (e) => {
+  const layer = currentLayer();
+  const node = layer.nodes.find(n => selectedNodeIds.has(n.id));
+  if (!node) return;
+  recordHistory();
+  const targetId = e.target.value || null;
+  node.linkTargetNodeId = targetId;
+  const found = findNodeAcrossProject(targetId);
+  node.linkTargetLayerId = found ? found.layer.id : null;
+  render();
+  showToast(targetId ? '🔗 リンクボタンを設定しました' : 'リンク設定を解除しました');
+});
+
+document.getElementById('btn-prop-jump-link').addEventListener('click', () => {
+  const layer = currentLayer();
+  const node = layer.nodes.find(n => selectedNodeIds.has(n.id));
+  if (node && node.linkTargetNodeId) {
+    jumpToLinkedNode(node.linkTargetNodeId);
+  }
+});
+
+document.getElementById('btn-enter-layer').addEventListener('click', () => {
+  if (selectedNodeIds.size === 1) enterNodeLayer([...selectedNodeIds][0]);
+});
+
+document.getElementById('prop-edge-label').addEventListener('change', () => recordHistory());
+document.getElementById('prop-edge-label').addEventListener('input', (e) => {
+  const edge = currentLayer().edges.find(ed => ed.id === selectedEdgeId);
+  if (edge) { edge.label = e.target.value; render(); }
+});
+document.getElementById('prop-edge-color').addEventListener('change', () => recordHistory());
+document.getElementById('prop-edge-color').addEventListener('input', (e) => {
+  const edge = currentLayer().edges.find(ed => ed.id === selectedEdgeId);
+  if (edge) { edge.color = e.target.value; render(); }
+});
+
+document.getElementById('btn-insert-rect-on-edge').addEventListener('click', () => {
+  if (selectedEdgeId) insertNodeBetweenEdge(selectedEdgeId);
+});
+document.getElementById('btn-edge-add-child-memo').addEventListener('click', () => {
+  addChildMemoToCurrentSelection();
+});
+document.getElementById('btn-prop-add-child-memo').addEventListener('click', () => {
+  addChildMemoToCurrentSelection();
+});
+
+/* --- オブジェクト追加・コンテキストメニュー・パネル開閉 --- */
+function addNode(type, customWorldPos = null, parentSpec = null) {
+  recordHistory();
+  const layer = currentLayer();
+  const isCont = type === 'container';
+  const isMemo = type === 'memo';
+
+  const baseX = customWorldPos ? snapToGrid(customWorldPos.x) : snapToGrid((-panX + 260) / zoom);
+  const baseY = customWorldPos ? snapToGrid(customWorldPos.y) : snapToGrid((-panY + 180) / zoom);
+
+  const newNode = {
+    id: uid(isCont ? 'cont' : (isMemo ? 'memo' : 'node')),
+    type,
+    text: isCont ? '新規グループコンテナ' : (isMemo ? '仕様メモ' : ''),
+    x: baseX,
+    y: baseY,
+    width: isCont ? 360 : 192,
+    height: isCont ? 240 : (isMemo ? 108 : 84),
+    color: isCont ? '#e2e8f0' : (isMemo ? '#fef08a' : '#dbeafe'),
+    fontSize: 14,
+    fontFamily: "'Segoe UI', 'Meiryo', sans-serif",
+    textAlign: isMemo || isCont ? 'left' : 'center',
+    parentGroupId: null,
+    childLayerId: null,
+    locked: false,
+    isParentProxy: false,
+    parentObjectType: parentSpec ? parentSpec.type : null,
+    parentObjectId: parentSpec ? parentSpec.id : null,
+    offsetX: parentSpec ? parentSpec.offsetX : null,
+    offsetY: parentSpec ? parentSpec.offsetY : null,
+    linkTargetNodeId: null,
+    linkTargetLayerId: null
+  };
+
+  layer.nodes.push(newNode);
+  selectedNodeIds.clear();
+  selectedNodeIds.add(newNode.id);
+  selectedEdgeId = null;
+  render();
+  return newNode;
+}
+
+function addChildMemoToCurrentSelection() {
+  const layer = currentLayer();
+  if (selectedNodeIds.size === 1) {
+    const parentNode = layer.nodes.find(n => selectedNodeIds.has(n.id));
+    if (!parentNode) return;
+    const memoX = parentNode.x + parentNode.width + 36;
+    const memoY = parentNode.y - 12;
+    const anchor = { x: parentNode.x + parentNode.width / 2, y: parentNode.y + parentNode.height / 2 };
+    addNode('memo', { x: memoX, y: memoY }, {
+      type: 'node',
+      id: parentNode.id,
+      offsetX: memoX - anchor.x,
+      offsetY: memoY - anchor.y
+    });
+    showToast('📎 選択要素に「子メモ」を追加しました');
+  } else if (selectedEdgeId) {
+    const edge = layer.edges.find(e => e.id === selectedEdgeId);
+    if (!edge) return;
+    const mid = getEdgeMidpoint(layer, edge) || { x: 240, y: 180 };
+    const memoX = mid.x + 24;
+    const memoY = mid.y - 96;
+    addNode('memo', { x: memoX, y: memoY }, {
+      type: 'edge',
+      id: edge.id,
+      offsetX: memoX - mid.x,
+      offsetY: memoY - mid.y
+    });
+    showToast('📎 矢印に「子メモ」を追加しました');
+  }
+}
+
+document.getElementById('btn-add-rect').addEventListener('click', () => addNode('rect'));
+document.getElementById('btn-side-rect').addEventListener('click', () => addNode('rect'));
+document.getElementById('btn-add-container').addEventListener('click', () => addNode('container'));
+document.getElementById('btn-side-container').addEventListener('click', () => addNode('container'));
+document.getElementById('btn-add-memo').addEventListener('click', () => addNode('memo'));
+document.getElementById('btn-side-memo').addEventListener('click', () => addNode('memo'));
+
+document.getElementById('ctx-add-rect').addEventListener('click', () => {
+  hideContextMenu();
+  addNode('rect', contextMenuWorldPos);
+});
+document.getElementById('ctx-add-container').addEventListener('click', () => {
+  hideContextMenu();
+  addNode('container', contextMenuWorldPos);
+});
+document.getElementById('ctx-add-memo').addEventListener('click', () => {
+  hideContextMenu();
+  addNode('memo', contextMenuWorldPos);
+});
+document.getElementById('ctx-add-child-memo').addEventListener('click', () => {
+  hideContextMenu();
+  addChildMemoToCurrentSelection();
+});
+document.getElementById('ctx-insert-on-edge').addEventListener('click', () => {
+  hideContextMenu();
+  if (selectedEdgeId) insertNodeBetweenEdge(selectedEdgeId);
+});
+document.getElementById('ctx-paste').addEventListener('click', () => {
+  hideContextMenu();
+  pasteSelection(contextMenuWorldPos);
+});
+
+document.getElementById('btn-undo').addEventListener('click', performUndo);
+document.getElementById('btn-redo').addEventListener('click', performRedo);
+document.getElementById('btn-copy').addEventListener('click', copySelection);
+document.getElementById('btn-paste').addEventListener('click', () => pasteSelection());
+document.getElementById('btn-delete').addEventListener('click', deleteSelection);
+document.getElementById('btn-reset-view').addEventListener('click', () => { panX = 0; panY = 0; zoom = 1; render(); });
+
+const leftPanel = document.getElementById('left-panel');
+const rightPanel = document.getElementById('right-panel');
+const leftResizer = document.getElementById('left-resizer');
+const rightResizer = document.getElementById('right-resizer');
+
+document.getElementById('btn-toggle-left').addEventListener('click', () => {
+  leftPanel.classList.toggle('hidden');
+  leftResizer.classList.toggle('hidden');
+});
+document.getElementById('btn-toggle-right').addEventListener('click', () => {
+  rightPanel.classList.toggle('hidden');
+  rightResizer.classList.toggle('hidden');
+});
+
+function setupResizer(resizerEl, panelEl, isLeft) {
+  let dragging = false;
+  resizerEl.addEventListener('mousedown', (e) => {
+    dragging = true;
+    resizerEl.classList.add('dragging');
+    e.preventDefault();
+  });
+  window.addEventListener('mousemove', (e) => {
+    if (!dragging) return;
+    const newW = isLeft ? e.clientX : (window.innerWidth - e.clientX);
+    panelEl.style.width = `${Math.max(150, Math.min(460, newW))}px`;
+  });
+  window.addEventListener('mouseup', () => {
+    if (dragging) {
+      dragging = false;
+      resizerEl.classList.remove('dragging');
+    }
+  });
+}
+setupResizer(leftResizer, leftPanel, true);
+setupResizer(rightResizer, rightPanel, false);
+
+/* --- Firebase プロジェクト一覧・保存・読込・URLルーティング --- */
+async function fetchProjectList() {
+  const container = document.getElementById('project-list-container');
+  container.innerHTML = '<div style="color:var(--text-sub); font-size:12px; padding:12px;">Firebaseから一覧を取得中...</div>';
+  try {
+    const res = await fetch('/api/projects?action=list');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const list = data.projects || [];
+
+    if (list.length === 0) {
+      container.innerHTML = '<div style="color:var(--text-sub); font-size:12px; padding:12px;">保存されたプロジェクトはまだありません。上のフォームから新規作成してください。</div>';
+      return;
+    }
+
+    container.innerHTML = '';
+    list.forEach(item => {
+      const row = document.createElement('div');
+      row.className = 'project-item';
+      row.innerHTML = `
+        <div class="project-item-info">
+          <div class="project-item-title">📁 ${item.projectId}</div>
+          <div class="project-item-meta">階層数: ${item.layerCount} ｜ ルート要素数: ${item.rootNodeCount} ｜ 更新: ${item.updatedAt.slice(0, 19)}</div>
+        </div>
+        <div style="display:flex; gap:6px;">
+          <button class="btn btn-primary btn-open-item">開く</button>
+          <button class="btn btn-danger btn-del-item" title="削除">🗑</button>
+        </div>
+      `;
+      row.addEventListener('click', () => openProjectById(item.projectId, true));
+      row.querySelector('.btn-del-item').addEventListener('click', async (ev) => {
+        ev.stopPropagation();
+        if (!confirm(`プロジェクト「${item.projectId}」をFirebaseから削除しますか？`)) return;
+        await deleteProjectById(item.projectId);
+        fetchProjectList();
+      });
+      container.appendChild(row);
+    });
+  } catch (err) {
+    console.error(err);
+    container.innerHTML = `<div style="color:#f87171; font-size:12px; padding:12px;">一覧の取得に失敗しました: ${err.message}</div>`;
+  }
+}
+
+async function openProjectById(pid, pushHistory = true) {
+  if (!pid) return;
+  try {
+    const res = await fetch(`/api/projects/${encodeURIComponent(pid)}?project_id=${encodeURIComponent(pid)}`);
+    if (res.status === 404) {
+      projectData = createEmptyProject(pid);
+      clearHistory();
+      updateProjectHeaderAndUrl(pid, pushHistory);
+      projectModal.classList.remove('open');
+      selectedNodeIds.clear();
+      selectedEdgeId = null;
+      panX = 0; panY = 0; zoom = 1;
+      render();
+      showToast(`新規プロジェクト「${pid}」を開始しました（Ctrl+S で保存）`);
+      return;
+    }
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.detail || `HTTP ${res.status}`);
+    }
+    const loaded = await res.json();
+    projectData = loaded;
+    if (!projectData.currentLayerId || !projectData.layers[projectData.currentLayerId]) {
+      projectData.currentLayerId = "root";
+    }
+    clearHistory();
+    updateProjectHeaderAndUrl(pid, pushHistory);
+    projectModal.classList.remove('open');
+    selectedNodeIds.clear();
+    selectedEdgeId = null;
+    panX = 0; panY = 0; zoom = 1;
+    render();
+    showToast(`プロジェクト「${pid}」を読み込みました`);
+  } catch (err) {
+    console.error(err);
+    showToast(`読込エラー: ${err.message}`);
+  }
+}
+
+async function saveCurrentProject() {
+  const pid = projectData.projectId;
+  if (!pid) return showToast('プロジェクトが選択されていません');
+
+  try {
+    const res = await fetch(`/api/projects/${encodeURIComponent(pid)}?project_id=${encodeURIComponent(pid)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(projectData)
+    });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.detail || `HTTP ${res.status}`);
+    }
+    showToast(`☁ Firebaseへ保存しました (ID: ${pid})`);
+  } catch (err) {
+    console.error(err);
+    showToast(`保存エラー: ${err.message}`);
+  }
+}
+
+async function deleteProjectById(pid) {
+  try {
+    await fetch(`/api/projects/${encodeURIComponent(pid)}?project_id=${encodeURIComponent(pid)}&action=delete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectId: pid, _action: 'delete' })
+    });
+    showToast(`「${pid}」を削除しました`);
+  } catch (err) {
+    showToast(`削除エラー: ${err.message}`);
+  }
+}
+
+document.getElementById('btn-open-modal').addEventListener('click', () => {
+  projectModal.classList.add('open');
+  fetchProjectList();
+});
+document.getElementById('btn-close-modal').addEventListener('click', () => {
+  projectModal.classList.remove('open');
+});
+document.getElementById('btn-refresh-list').addEventListener('click', fetchProjectList);
+
+document.getElementById('btn-create-project').addEventListener('click', async () => {
+  const input = document.getElementById('new-project-input');
+  const pid = input.value.trim().replace(/[\/\\?#]/g, '_');
+  if (!pid) return showToast('新しいプロジェクト名を入力してください');
+
+  projectData = createEmptyProject(pid);
+  clearHistory();
+  updateProjectHeaderAndUrl(pid, true);
+  projectModal.classList.remove('open');
+  input.value = '';
+  render();
+  await saveCurrentProject();
+});
+
+document.getElementById('btn-cloud-save').addEventListener('click', saveCurrentProject);
+
+document.getElementById('btn-copy-url').addEventListener('click', () => {
+  navigator.clipboard.writeText(window.location.href).then(() => {
+    showToast('プロジェクト専用URLをコピーしました！');
+  });
+});
+
+window.addEventListener('popstate', () => {
+  if (undoStack.length > 0) {
+    performUndo();
+    const targetPath = `/p/${encodeURIComponent(projectData.projectId)}`;
+    window.history.pushState({ projectId: projectData.projectId, guard: true }, '', targetPath);
+  } else {
+    handleInitialRoute(false);
+  }
+});
+
+function handleInitialRoute(pushHistory = false) {
+  const path = window.location.pathname;
+  const params = new URLSearchParams(window.location.search);
+
+  if (path.startsWith('/p/')) {
+    const pid = decodeURIComponent(path.slice(3));
+    if (pid) {
+      openProjectById(pid, true);
+      return;
+    }
+  } else if (params.get('p')) {
+    openProjectById(params.get('p'), true);
+    return;
+  }
+
+  render();
+  projectModal.classList.add('open');
+  fetchProjectList();
+}
+
+handleInitialRoute(false);
