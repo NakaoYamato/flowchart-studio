@@ -1,3 +1,4 @@
+import asyncio
 import os
 import json
 from typing import Dict, Any, Optional
@@ -120,22 +121,45 @@ async def handle_ai_assist(payload: Dict[str, Any]):
 【ユーザーからの指示】
 {prompt}
 """
+# handle_ai_assist (または run_gemini_assist) 関数内の API 呼び出し部分を以下に差し替え
+    # 503混雑時に自動で軽量モデルやリトライへ切り替えるリスト
+    candidate_models = [
+        "gemini-3.0-flash",
+        "gemini-3.0-flash-lite",
+        "gemini-2.5-flash-lite"
+    ]
 
-    try:
-        client = genai.Client(api_key=api_key.strip())
-        response = client.models.generate_content(
-            model="gemini-3.8-flash",
-            contents=user_content,
-            config=types.GenerateContentConfig(
-                system_instruction=system_instruction,
-                response_mime_type="application/json",
-                temperature=0.2,
-            ),
-        )
-        result_json = json.loads(response.text)
-        return result_json
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Gemini API エラー: {str(e)}")
+    client = genai.Client(api_key=api_key.strip())
+    last_error = None
+
+    for model_name in candidate_models:
+        for attempt in range(2):  # 各モデル最大2回トライ
+            try:
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=user_content,
+                    config=types.GenerateContentConfig(
+                        system_instruction=system_instruction,
+                        response_mime_type="application/json",
+                        temperature=0.2,
+                    ),
+                )
+                result_json = json.loads(response.text)
+                return result_json
+            except Exception as e:
+                last_error = e
+                err_str = str(e)
+                # 503 (過負荷) や 429 (レート制限) の場合は1.5秒待ってリトライまたは次モデルへ
+                if "503" in err_str or "UNAVAILABLE" in err_str or "429" in err_str:
+                    await asyncio.sleep(1.5)
+                    continue
+                # 404 (モデル未対応) などの場合はすぐ次の候補モデルへ切り替え
+                break
+
+    raise HTTPException(
+        status_code=503,
+        detail=f"現在Geminiサーバーが大変混雑しています。数秒待ってから再実行してください (詳細: {str(last_error)})"
+    )
 
 @app.get("/static/{file_path:path}")
 async def serve_static_files(file_path: str):

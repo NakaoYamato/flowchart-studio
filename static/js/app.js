@@ -2358,3 +2358,110 @@ document.getElementById('btn-run-ai-assist').addEventListener('click', async () 
     btnText.textContent = '🚀 AIでキャンバスを自動生成・更新する';
   }
 });
+
+/* ==============================================================
+ * 📐 ローカル高速自動整列（AI通信なしで0.01秒で綺麗に再配置）
+ * ============================================================== */
+function autoLayoutCurrentLayer() {
+  const layer = currentLayer();
+  if (!layer || !layer.nodes || layer.nodes.length === 0) return;
+
+  recordHistory(); // Ctrl+Z でいつでも戻せるよう履歴保存
+
+  if (isClassMode()) {
+    // 🧩 クラス図の自動整列：役割（タグ・継承関係）ごとに4列のグリッドへ綺麗に整列
+    const classes = layer.nodes.filter(n => n.type === 'class');
+    const others = layer.nodes.filter(n => n.type !== 'class');
+
+    // 継承の親になっている基底クラスを優先的に上へ配置するためソート
+    const parentIds = new Set(
+      layer.edges.filter(e => e.relationType === 'inheritance').map(e => e.target)
+    );
+
+    classes.sort((a, b) => {
+      const aIsParent = parentIds.has(a.id) ? 0 : 1;
+      const bIsParent = parentIds.has(b.id) ? 0 : 1;
+      if (aIsParent !== bIsParent) return aIsParent - bIsParent;
+      return (a.tags?.[0] || '').localeCompare(b.tags?.[0] || '');
+    });
+
+    const cols = 4; // 4列で整列
+    const startX = 48;
+    const startY = 48;
+    const gapX = 384; // 横の間隔
+
+    // 各列の現在のY座標を管理して、高さが違うクラス同士でも絶対に重ならないようにする
+    const colHeights = new Array(cols).fill(startY);
+
+    classes.forEach((cls, idx) => {
+      autoAdjustClassNodeHeight(cls);
+      // 一番高さが低い列を選んで配置
+      let targetCol = idx % cols;
+      cls.x = snapToGrid(startX + targetCol * gapX);
+      cls.y = snapToGrid(colHeights[targetCol]);
+      colHeights[targetCol] = cls.y + cls.height + 72; // 縦の間隔 72px
+    });
+
+    others.forEach((n, idx) => {
+      n.x = snapToGrid(startX + (idx % cols) * gapX);
+      n.y = snapToGrid(Math.max(...colHeights) + 48);
+    });
+  } else {
+    // 📊 フローチャートの自動整列（上から下へのトポロジカル階層レイアウト）
+    const nodes = layer.nodes.filter(n => n.type !== 'container' && n.type !== 'memo');
+    const visited = new Set();
+    const levels = [];
+
+    // 親アンカーまたは入力エッジがないノードを起点(Level 0)にする
+    const inDegree = new Map();
+    nodes.forEach(n => inDegree.set(n.id, 0));
+    layer.edges.forEach(e => {
+      if (inDegree.has(e.target)) inDegree.set(e.target, inDegree.get(e.target) + 1);
+    });
+
+    let queue = nodes.filter(n => n.isParentProxy || inDegree.get(n.id) === 0);
+    if (queue.length === 0 && nodes.length > 0) queue = [nodes[0]];
+
+    while (queue.length > 0) {
+      levels.push(queue);
+      queue.forEach(n => visited.add(n.id));
+      const nextQueue = [];
+      queue.forEach(u => {
+        layer.edges.filter(e => e.source === u.id).forEach(e => {
+          const v = nodes.find(n => n.id === e.target);
+          if (v && !visited.has(v.id) && !nextQueue.includes(v)) {
+            nextQueue.push(v);
+          }
+        });
+      });
+      queue = nextQueue;
+    }
+
+    const unvisited = nodes.filter(n => !visited.has(n.id));
+    if (unvisited.length > 0) levels.push(unvisited);
+
+    let currentY = 48;
+    levels.forEach(lvlNodes => {
+      const totalW = lvlNodes.length * 240;
+      let startX = Math.max(48, 360 - totalW / 2);
+      lvlNodes.forEach((n, i) => {
+        if (!n.isParentProxy) {
+          n.x = snapToGrid(startX + i * 264);
+          n.y = snapToGrid(currentY);
+        } else {
+          n.x = 240;
+          n.y = 48;
+        }
+      });
+      currentY += 144;
+    });
+  }
+
+  panX = 20;
+  panY = 20;
+  zoom = 0.85;
+  render();
+  showToast('📐 見やすい位置へ自動整列しました！(Ctrl+Zで元に戻せます)');
+}
+
+document.getElementById('btn-auto-layout').addEventListener('click', autoLayoutCurrentLayer);
