@@ -124,9 +124,9 @@ async def handle_ai_assist(payload: Dict[str, Any]):
 # handle_ai_assist (または run_gemini_assist) 関数内の API 呼び出し部分を以下に差し替え
     # 503混雑時に自動で軽量モデルやリトライへ切り替えるリスト
     candidate_models = [
-        "gemini-3.0-flash",
-        "gemini-3.0-flash-lite",
-        "gemini-2.5-flash-lite"
+        "gemini-3.5-flash",
+        "gemini-3.5-flash-lite",
+        "gemini-3.7-flash"
     ]
 
     client = genai.Client(api_key=api_key.strip())
