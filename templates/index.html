@@ -391,6 +391,40 @@
 
         <!-- 矢印（エッジ）用プロパティ -->
         <div id="prop-edge" style="display:none;">
+          <!-- 追加: エッジのロックボタン -->
+          <div class="form-group">
+            <button class="btn" id="prop-edge-lock-btn" style="width:100%; justify-content:center; padding:7px;">
+              🔓 編集をロックする
+            </button>
+          </div>
+
+          <!-- 追加: 始点（接続元）と終点（接続先）の編集ボックス -->
+          <div class="sub-box">
+            <label style="font-size:11px; color:#93c5fd; font-weight:700; display:block; margin-bottom:6px;">
+              📍 始点・終点の編集
+            </label>
+            <div class="form-group">
+              <label>始点（接続元ノード）</label>
+              <select id="prop-edge-source-node" class="form-control" style="margin-bottom:4px;"></select>
+              <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:4px;">
+                <button type="button" class="btn btn-edge-src-port" data-port="top">上</button>
+                <button type="button" class="btn btn-edge-src-port" data-port="bottom">下</button>
+                <button type="button" class="btn btn-edge-src-port" data-port="left">左</button>
+                <button type="button" class="btn btn-edge-src-port" data-port="right">右</button>
+              </div>
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+              <label>終点（接続先ノード）</label>
+              <select id="prop-edge-target-node" class="form-control" style="margin-bottom:4px;"></select>
+              <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:4px;">
+                <button type="button" class="btn btn-edge-tgt-port" data-port="top">上</button>
+                <button type="button" class="btn btn-edge-tgt-port" data-port="bottom">下</button>
+                <button type="button" class="btn btn-edge-tgt-port" data-port="left">左</button>
+                <button type="button" class="btn btn-edge-tgt-port" data-port="right">右</button>
+              </div>
+            </div>
+          </div>
+
           <div class="sub-box">
             <label style="font-size:11px; color:#c4b5fd; font-weight:700; display:block; margin-bottom:6px;">
               🧬 矢印の種類（クラス継承・関連タイプ）
@@ -479,6 +513,10 @@
           </button>
           <button class="btn" id="btn-copy-layer-json" style="justify-content:center; padding:8px;">
             📄 現在の階層だけコピー
+          </button>
+          <!-- 追加: クリップボードから貼り付けて即座に反映するボタン -->
+          <button class="btn btn-warning" id="btn-paste-replace-json" style="flex:1; justify-content:center; padding:8px;">
+            📋 クリップボードの内容に変更する
           </button>
           <button class="btn btn-success" id="btn-import-json" style="flex:1; justify-content:center; padding:8px;">
             📥 ② 貼り付けたJSONを設計に反映する

@@ -1076,7 +1076,7 @@ function createOuterPortsAndQuickCreateSVG(node) {
 }
 
 function createEdgeSVG(edge) {
-  const layer = currentLayer();
+const layer = currentLayer();
   const src = layer.nodes.find(n => n.id === edge.source);
   const tgt = layer.nodes.find(n => n.id === edge.target);
   if (!src || !tgt) return null;
@@ -1085,6 +1085,7 @@ function createEdgeSVG(edge) {
   const p2 = getPortCoords(tgt, edge.targetPort);
   const d = computeCurvePath(p1.x, p1.y, p2.x, p2.y, edge.sourcePort, edge.targetPort);
   const isSelected = selectedEdgeId === edge.id;
+  const isLocked = Boolean(edge.locked); // 追加: ロック状態の判定
   const relType = edge.relationType || 'normal';
   const isInherit = (relType === 'inheritance' || relType === 'implementation');
   const isDashed = (relType === 'implementation' || relType === 'dependency');
@@ -1101,9 +1102,12 @@ function createEdgeSVG(edge) {
 
   const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
   path.setAttribute('d', d);
-  path.setAttribute('stroke', isSelected ? '#3b82f6' : (edge.color || '#475569'));
+  // ロック時は少し色を抑え、選択時はオレンジまたは青に
+  path.setAttribute('stroke', isSelected ? (isLocked ? '#f59e0b' : '#3b82f6') : (edge.color || '#475569'));
   path.setAttribute('stroke-width', isSelected ? '3' : '2.2');
-  if (isDashed) path.setAttribute('stroke-dasharray', '6,4');
+  if (isDashed) {
+    path.setAttribute('stroke-dasharray', '6,4');
+  }
   path.setAttribute('fill', 'none');
 
   let markerUrl = isSelected ? 'url(#arrowhead-selected)' : 'url(#arrowhead)';
@@ -1124,11 +1128,12 @@ function createEdgeSVG(edge) {
     txt.setAttribute('fill', '#1e293b');
     txt.setAttribute('font-size', '12px');
     txt.setAttribute('font-weight', '600');
-    txt.textContent = edge.label;
+    txt.textContent = edge.label + (isLocked ? ' 🔒' : ''); // ロック時は鍵アイコン
     g.appendChild(txt);
   }
 
-  if (isSelected) {
+  // ロックされていない場合のみ、中継ノード追加ボタン(+)と継承切替ボタン(▷)を表示
+  if (isSelected && !isLocked) {
     const midBtn = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     midBtn.setAttribute('transform', `translate(${mx - 14}, ${my})`);
     midBtn.style.cursor = 'pointer';

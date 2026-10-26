@@ -1176,6 +1176,11 @@ function deleteSelection() {
     selectedNodeIds.clear();
     render();
   } else if (selectedEdgeId) {
+    const edge = layer.edges.find(e => e.id === selectedEdgeId);
+    if (edge && edge.locked) {
+      showToast('🔒 矢印がロックされているため削除できません');
+      return;
+    }
     recordHistory();
     layer.edges = layer.edges.filter(e => e.id !== selectedEdgeId);
     selectedEdgeId = null;
@@ -1690,24 +1695,66 @@ function updatePropertyPanel() {
 
     document.getElementById('prop-fontsize').value = first.fontSize || 14;
     document.getElementById('prop-fontfamily').value = first.fontFamily || "'Segoe UI', 'Meiryo', sans-serif";
-  } else if (selectedEdgeId) {
-    const edge = layer.edges.find(e => e.id === selectedEdgeId);
+  } else if (selectedEdgeId) {const edge = layer.edges.find(e => e.id === selectedEdgeId);
     if (edge) {
       emptyEl.style.display = 'none';
       nodeEl.style.display = 'none';
       edgeEl.style.display = 'block';
+
+      // ロックボタンの状態更新
+      const lockBtn = document.getElementById('prop-edge-lock-btn');
+      const isLocked = Boolean(edge.locked);
+      lockBtn.textContent = isLocked ? '🔒 ロック中 (クリックで解除)' : '🔓 編集をロックする';
+      lockBtn.className = isLocked ? 'btn btn-warning' : 'btn';
+
+      // 接続元・接続先ノードの選択肢を生成
+      const srcSelect = document.getElementById('prop-edge-source-node');
+      const tgtSelect = document.getElementById('prop-edge-target-node');
+      srcSelect.innerHTML = '';
+      tgtSelect.innerHTML = '';
+
+      layer.nodes.forEach(n => {
+        const title = n.text || `(${n.type}:${n.id.slice(-4)})`;
+        const opt1 = document.createElement('option');
+        opt1.value = n.id;
+        opt1.textContent = title;
+        if (n.id === edge.source) opt1.selected = true;
+        srcSelect.appendChild(opt1);
+
+        const opt2 = document.createElement('option');
+        opt2.value = n.id;
+        opt2.textContent = title;
+        if (n.id === edge.target) opt2.selected = true;
+        tgtSelect.appendChild(opt2);
+      });
+
+      // ポートボタンのアクティブ表示
+      document.querySelectorAll('.btn-edge-src-port').forEach(btn => {
+        btn.classList.toggle('active-btn', btn.getAttribute('data-port') === edge.sourcePort);
+        btn.disabled = isLocked;
+      });
+      document.querySelectorAll('.btn-edge-tgt-port').forEach(btn => {
+        btn.classList.toggle('active-btn', btn.getAttribute('data-port') === edge.targetPort);
+        btn.disabled = isLocked;
+      });
+
+      srcSelect.disabled = isLocked;
+      tgtSelect.disabled = isLocked;
+      document.getElementById('prop-edge-label').disabled = isLocked;
+      document.getElementById('prop-edge-color').disabled = isLocked;
+      document.getElementById('btn-edge-reverse').disabled = isLocked;
+      document.getElementById('btn-insert-rect-on-edge').disabled = isLocked;
+
       document.getElementById('prop-edge-label').value = edge.label || '';
       document.getElementById('prop-edge-color').value = edge.color || '#475569';
 
       const rType = edge.relationType || 'normal';
       ['normal', 'inheritance', 'implementation', 'dependency'].forEach(t => {
-        document.getElementById(`btn-edge-type-${t}`).classList.toggle('active-btn', rType === t);
+        const b = document.getElementById(`btn-edge-type-${t}`);
+        b.classList.toggle('active-btn', rType === t);
+        b.disabled = isLocked;
       });
     }
-  } else {
-    emptyEl.style.display = 'block';
-    nodeEl.style.display = 'none';
-    edgeEl.style.display = 'none';
   }
 }
 
@@ -1839,6 +1886,52 @@ document.getElementById('prop-edge-color').addEventListener('change', () => reco
 document.getElementById('prop-edge-color').addEventListener('input', (e) => {
   const edge = currentLayer().edges.find(ed => ed.id === selectedEdgeId);
   if (edge) { edge.color = e.target.value; render(); }
+});
+/* --- 矢印のロック切替 --- */
+document.getElementById('prop-edge-lock-btn').addEventListener('click', () => {
+  const edge = currentLayer().edges.find(e => e.id === selectedEdgeId);
+  if (!edge) return;
+  recordHistory();
+  edge.locked = !edge.locked;
+  render();
+  showToast(edge.locked ? '🔒 矢印をロックしました' : '🔓 矢印のロックを解除しました');
+});
+
+/* --- 始点・終点ノードおよびポート変更 --- */
+document.getElementById('prop-edge-source-node').addEventListener('change', (e) => {
+  const edge = currentLayer().edges.find(ed => ed.id === selectedEdgeId);
+  if (!edge || edge.locked) return;
+  recordHistory();
+  edge.source = e.target.value;
+  render();
+});
+
+document.getElementById('prop-edge-target-node').addEventListener('change', (e) => {
+  const edge = currentLayer().edges.find(ed => ed.id === selectedEdgeId);
+  if (!edge || edge.locked) return;
+  recordHistory();
+  edge.target = e.target.value;
+  render();
+});
+
+document.querySelectorAll('.btn-edge-src-port').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const edge = currentLayer().edges.find(ed => ed.id === selectedEdgeId);
+    if (!edge || edge.locked) return;
+    recordHistory();
+    edge.sourcePort = btn.getAttribute('data-port');
+    render();
+  });
+});
+
+document.querySelectorAll('.btn-edge-tgt-port').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const edge = currentLayer().edges.find(ed => ed.id === selectedEdgeId);
+    if (!edge || edge.locked) return;
+    recordHistory();
+    edge.targetPort = btn.getAttribute('data-port');
+    render();
+  });
 });
 
 document.getElementById('btn-insert-rect-on-edge').addEventListener('click', () => {
@@ -2243,6 +2336,22 @@ document.getElementById('btn-copy-layer-json').addEventListener('click', () => {
   navigator.clipboard.writeText(aiJsonTextarea.value).then(() => {
     showToast(`📄 現在の階層「${layerData.name}」のJSONをコピーしました！`);
   });
+});
+
+/* --- クリップボードのJSONを読み取って現在の設計を一括置換する --- */
+document.getElementById('btn-paste-replace-json').addEventListener('click', async () => {
+  try {
+    const text = await navigator.clipboard.readText();
+    if (!text || !text.trim()) {
+      return showToast('⚠️ クリップボードが空です。コピーしてから実行してください。');
+    }
+    aiJsonTextarea.value = text;
+    // 「貼り付けたJSONを設計に反映する」ボタンの処理を実行
+    document.getElementById('btn-import-json').click();
+  } catch (err) {
+    console.error(err);
+    showToast('⚠️ クリップボードの読み取り権限がないか、エラーが発生しました。テキストエリアに直接貼り付けてください。');
+  }
 });
 
 document.getElementById('btn-import-json').addEventListener('click', () => {
