@@ -382,7 +382,11 @@ function screenToWorld(clientX, clientY) {
 function updateViewportTransform() {
   viewport.setAttribute('transform', `translate(${panX}, ${panY}) scale(${zoom})`);
   gridPattern.setAttribute('patternTransform', `translate(${panX}, ${panY}) scale(${zoom})`);
-  updateMiniToolbarPosition();
+
+  // 関数が存在する場合のみ安全に呼び出す
+  if (typeof updateMiniToolbarPosition === 'function') {
+    updateMiniToolbarPosition();
+  }
 }
 
 /* --- 幾何・アンカー・検索・逆参照ヘルパー --- */
