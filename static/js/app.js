@@ -917,3 +917,186 @@ function commitInlineEdit() {
   inlineEditor.style.display = 'none';
   render();
 }
+
+/* ==============================================================
+ * プロパティパネルの更新と矢印SVG生成ヘルパー
+ * ============================================================== */
+function updatePropertyPanel() {
+  const emptyEl = document.getElementById('prop-empty');
+  const nodeEl = document.getElementById('prop-node');
+  const edgeEl = document.getElementById('prop-edge');
+  const layer = currentLayer();
+  if (!layer) return;
+
+  if (selectedNodeIds.size > 0) {
+    if (emptyEl) emptyEl.style.display = 'none';
+    if (nodeEl) nodeEl.style.display = 'block';
+    if (edgeEl) edgeEl.style.display = 'none';
+
+    const selectedNodes = layer.nodes.filter(n => selectedNodeIds.has(n.id));
+    const first = selectedNodes[0];
+    const multiBadge = document.getElementById('prop-multi-badge');
+    const proxyNotice = document.getElementById('prop-proxy-notice');
+    const lockBtn = document.getElementById('prop-lock-btn');
+    const locked = selectedNodes.every(n => isNodeLocked(n));
+    const isProxy = selectedNodes.some(n => n.isParentProxy);
+    const anyHasTag = selectedNodes.some(n => getNodeActiveTag(n) !== null);
+
+    if (proxyNotice) proxyNotice.style.display = isProxy ? 'block' : 'none';
+    if (lockBtn) {
+      lockBtn.style.display = isProxy ? 'none' : 'inline-flex';
+      lockBtn.textContent = locked ? '🔒 ロック中 (クリックで解除 / Ctrl+L)' : '🔓 編集・移動をロックする (Ctrl+L)';
+      lockBtn.className = locked ? 'btn btn-warning' : 'btn';
+    }
+
+    if (typeof populateNodeTagSelector === 'function') {
+      populateNodeTagSelector(selectedNodes);
+    }
+
+    const curAlign = first.textAlign || (first.type === 'memo' ? 'left' : 'center');
+    ['left', 'center', 'right'].forEach(a => {
+      const btn = document.getElementById(`prop-align-${a}`);
+      if (btn) btn.classList.toggle('active-btn', curAlign === a);
+    });
+
+    if (selectedNodes.length > 1) {
+      if (multiBadge) {
+        multiBadge.style.display = 'block';
+        multiBadge.textContent = `${selectedNodes.length} 個の要素を一括選択中`;
+      }
+      const textGroup = document.getElementById('prop-text-group');
+      const classBox = document.getElementById('prop-class-box');
+      const posGroup = document.getElementById('prop-pos-group');
+      const memoBox = document.getElementById('prop-memo-parent-box');
+      const memoAddBox = document.getElementById('prop-add-child-memo-box');
+      const linkBox = document.getElementById('prop-link-box');
+      const enterLayerBtn = document.getElementById('btn-enter-layer');
+
+      if (textGroup) textGroup.style.display = 'none';
+      if (classBox) classBox.style.display = 'none';
+      if (posGroup) posGroup.style.display = 'none';
+      if (memoBox) memoBox.style.display = 'none';
+      if (memoAddBox) memoAddBox.style.display = 'none';
+      if (linkBox) linkBox.style.display = 'none';
+      if (enterLayerBtn) enterLayerBtn.style.display = 'none';
+    } else {
+      if (multiBadge) multiBadge.style.display = 'none';
+      const isMemo = first.type === 'memo';
+      const isClass = first.type === 'class';
+
+      const textGroup = document.getElementById('prop-text-group');
+      const textInput = document.getElementById('prop-text');
+      const posGroup = document.getElementById('prop-pos-group');
+      const wInput = document.getElementById('prop-w');
+      const hInput = document.getElementById('prop-h');
+      const classBox = document.getElementById('prop-class-box');
+      const alignGroup = document.getElementById('prop-align-group');
+      const memoBox = document.getElementById('prop-memo-parent-box');
+      const memoAddBox = document.getElementById('prop-add-child-memo-box');
+      const linkBox = document.getElementById('prop-link-box');
+      const enterLayerBtn = document.getElementById('btn-enter-layer');
+
+      if (textGroup) textGroup.style.display = isClass ? 'none' : 'block';
+      if (textInput) textInput.value = first.text || '';
+      if (posGroup) posGroup.style.display = 'grid';
+      if (wInput) wInput.value = first.width;
+      if (hInput) hInput.value = first.height;
+
+      if (classBox) classBox.style.display = isClass ? 'block' : 'none';
+      if (alignGroup) alignGroup.style.display = isClass ? 'none' : 'block';
+      if (memoBox) memoBox.style.display = isMemo ? 'block' : 'none';
+      if (memoAddBox) memoAddBox.style.display = isMemo ? 'none' : 'block';
+      if (linkBox) linkBox.style.display = first.isParentProxy ? 'none' : 'block';
+      if (enterLayerBtn) enterLayerBtn.style.display = (first.type !== 'rect' || first.isParentProxy) ? 'none' : 'inline-flex';
+
+      if (isClass && typeof renderClassMembersEditor === 'function') renderClassMembersEditor(first);
+      if (isMemo && typeof populateMemoParentOptions === 'function') populateMemoParentOptions(first);
+      if (!first.isParentProxy && typeof populateLinkTargetOptions === 'function') populateLinkTargetOptions(first);
+    }
+  } else if (selectedEdgeId) {
+    const edge = layer.edges.find(e => e.id === selectedEdgeId);
+    if (edge) {
+      if (emptyEl) emptyEl.style.display = 'none';
+      if (nodeEl) nodeEl.style.display = 'none';
+      if (edgeEl) edgeEl.style.display = 'block';
+      const edgeLabel = document.getElementById('prop-edge-label');
+      const edgeColor = document.getElementById('prop-edge-color');
+      if (edgeLabel) edgeLabel.value = edge.label || '';
+      if (edgeColor) edgeColor.value = edge.color || '#475569';
+    }
+  } else {
+    if (emptyEl) emptyEl.style.display = 'block';
+    if (nodeEl) nodeEl.style.display = 'none';
+    if (edgeEl) edgeEl.style.display = 'none';
+  }
+}
+
+function createEdgeSVG(edge) {
+  const layer = currentLayer();
+  const src = layer.nodes.find(n => n.id === edge.source);
+  const tgt = layer.nodes.find(n => n.id === edge.target);
+  if (!src || !tgt) return null;
+
+  const p1 = getPortCoords(src, edge.sourcePort);
+  const p2 = getPortCoords(tgt, edge.targetPort);
+  const d = computeCurvePath(p1.x, p1.y, p2.x, p2.y, edge.sourcePort, edge.targetPort);
+  const isSelected = selectedEdgeId === edge.id;
+  const isLocked = Boolean(edge.locked);
+  const relType = edge.relationType || 'normal';
+  const isInherit = (relType === 'inheritance' || relType === 'implementation');
+  const isDashed = (relType === 'implementation' || relType === 'dependency');
+
+  const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+  g.style.cursor = 'pointer';
+
+  const hit = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  hit.setAttribute('d', d);
+  hit.setAttribute('stroke', 'transparent');
+  hit.setAttribute('stroke-width', '22');
+  hit.setAttribute('fill', 'none');
+  g.appendChild(hit);
+
+  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  path.setAttribute('d', d);
+  path.setAttribute('stroke', isSelected ? (isLocked ? '#f59e0b' : '#3b82f6') : (edge.color || '#475569'));
+  path.setAttribute('stroke-width', isSelected ? '3' : '2.2');
+  if (isDashed) {
+    path.setAttribute('stroke-dasharray', '6,4');
+  }
+  path.setAttribute('fill', 'none');
+
+  let markerUrl = isSelected ? 'url(#arrowhead-selected)' : 'url(#arrowhead)';
+  if (isInherit) {
+    markerUrl = isSelected ? 'url(#arrowhead-inheritance-selected)' : 'url(#arrowhead-inheritance)';
+  }
+  path.setAttribute('marker-end', markerUrl);
+  g.appendChild(path);
+
+  const mx = (p1.x + p2.x) / 2;
+  const my = (p1.y + p2.y) / 2;
+
+  if (edge.label) {
+    const txt = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    txt.setAttribute('x', mx);
+    txt.setAttribute('y', my - 10);
+    txt.setAttribute('text-anchor', 'middle');
+    txt.setAttribute('fill', '#1e293b');
+    txt.setAttribute('font-size', '12px');
+    txt.setAttribute('font-weight', '600');
+    txt.textContent = edge.label + (isLocked ? ' 🔒' : '');
+    g.appendChild(txt);
+  }
+
+  g.addEventListener('mousedown', (ev) => {
+    if (ev.button !== 0) return;
+    ev.stopPropagation();
+    hideContextMenu();
+    hideNearbyPicker();
+    commitInlineEdit();
+    selectedNodeIds.clear();
+    selectedEdgeId = edge.id;
+    render();
+  });
+
+  return g;
+}
