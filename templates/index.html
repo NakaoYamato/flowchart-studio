@@ -22,11 +22,21 @@
     <option value="List<int>"></option>
   </datalist>
 
-  <!-- Header -->
+  <!-- Header (すっきりと整理) -->
   <header>
     <div class="header-left">
-      <button class="btn" id="btn-toggle-left" title="左パネルの表示切替">◀</button>
-      <button class="btn" id="btn-open-modal" title="プロジェクト一覧を開く">📋 プロジェクト一覧</button>
+      <!-- プロジェクトメニュー（一覧・URL・保存・JSON・AIを統合） -->
+      <div class="dropdown" id="project-dropdown-container">
+        <button class="btn btn-primary" id="btn-project-menu">プロジェクト ▼</button>
+        <div id="project-dropdown-content" class="dropdown-content">
+          <button class="ctx-item" id="btn-open-modal">📋 プロジェクト一覧</button>
+          <button class="ctx-item" id="btn-copy-url">🔗 URLをコピー</button>
+          <button class="ctx-item" id="btn-cloud-save">☁ 保存 (Ctrl+S)</button>
+          <div class="ctx-divider"></div>
+          <button class="ctx-item" id="btn-open-json-modal">📋 JSON入出力</button>
+          <button class="ctx-item" id="btn-open-ai-assist">✨ AI自動生成</button>
+        </div>
+      </div>
 
       <!-- フローチャート / クラス図 モード切替タブ -->
       <div class="mode-switch-group">
@@ -36,36 +46,34 @@
     </div>
 
     <div class="header-center">
-      <button class="btn" id="btn-undo" title="元に戻す (Ctrl+Z / マウス戻るボタン)" disabled>↶</button>
-      <button class="btn" id="btn-redo" title="やり直す (Ctrl+Y / マウス進むボタン)" disabled>↷</button>
+      <button class="btn" id="btn-undo" title="元に戻す (Ctrl+Z)" disabled>↶</button>
+      <button class="btn" id="btn-redo" title="やり直す (Ctrl+Y)" disabled>↷</button>
       <button class="btn" id="btn-copy" title="Ctrl+C">コピー</button>
       <button class="btn" id="btn-paste" title="Ctrl+V">貼り付け</button>
       <button class="btn btn-danger" id="btn-delete" title="Delete">削除</button>
       <button class="btn" id="btn-reset-view" title="視点を100%に戻す">視点100%</button>
-      <button class="btn btn-primary" id="btn-auto-layout" title="現在のキャンバスの要素を見やすい位置へ自動整列します">📐 自動整列</button>
+      <button class="btn btn-primary" id="btn-auto-layout" title="自動整列">📐 自動整列</button>
     </div>
 
     <div class="header-right">
-      <button class="btn" id="btn-open-json-modal" title="方法A: チャット画面のGeminiとJSONをコピー＆ペーストで連携">📋 JSON入出力</button>
-      <button class="btn btn-purple" id="btn-open-ai-assist" title="方法B: アプリ内蔵のGemini AIに指示して自動生成・編集">✨ AI自動生成</button>
       <div class="project-badge" title="現在開いているプロジェクトID">
         <span>📁</span>
         <span id="current-project-label">未選択</span>
       </div>
-      <button class="btn" id="btn-copy-url" title="このプロジェクトの専用URLをコピー">🔗 URL</button>
-      <button class="btn btn-success" id="btn-cloud-save" title="ショートカット: Ctrl+S">
-        <span class="save-spinner" id="save-spinner"></span>
-        <span id="save-btn-text">☁ 保存 (Ctrl+S)</span>
-      </button>
-      <button class="btn" id="btn-toggle-right" title="右パネルの表示切替">▶</button>
     </div>
   </header>
 
-  <!-- Subbar -->
+  <!-- Subbar (左右パネルの切替ボタンを配置) -->
   <div class="subbar">
-    <div class="breadcrumbs" id="breadcrumbs"></div>
-    <div class="hint-text">
-      【操作】クラス内の文字クリックで直接入力 ｜ Enter：次の変数/関数を連続追加 ｜ ✨AI自動生成 / 📋JSON入出力でGemini連携
+    <div style="display:flex; align-items:center; gap:8px; overflow-x:auto;">
+      <button class="btn" id="btn-toggle-left" title="左パネルの表示切替">◀</button>
+      <div class="breadcrumbs" id="breadcrumbs"></div>
+    </div>
+    <div style="display:flex; align-items:center; gap:8px;">
+      <div class="hint-text desktop-hint">
+        【操作】ダブルクリック：テキスト編集 ｜ 右クリック：メニュー ｜ 密集地Wクリック：周辺選択
+      </div>
+      <button class="btn" id="btn-toggle-right" title="右パネルの表示切替">▶</button>
     </div>
   </div>
 
@@ -391,14 +399,12 @@
 
         <!-- 矢印（エッジ）用プロパティ -->
         <div id="prop-edge" style="display:none;">
-          <!-- 追加: エッジのロックボタン -->
           <div class="form-group">
             <button class="btn" id="prop-edge-lock-btn" style="width:100%; justify-content:center; padding:7px;">
               🔓 編集をロックする
             </button>
           </div>
 
-          <!-- 追加: 始点（接続元）と終点（接続先）の編集ボックス -->
           <div class="sub-box">
             <label style="font-size:11px; color:#93c5fd; font-weight:700; display:block; margin-bottom:6px;">
               📍 始点・終点の編集
@@ -466,7 +472,7 @@
     </aside>
   </div>
 
-  <!-- 起動時・切替時のプロジェクト選択モーダル -->
+  <!-- プロジェクト選択モーダル -->
   <div class="modal-backdrop" id="project-modal">
     <div class="modal-card">
       <div class="modal-header">
@@ -495,7 +501,7 @@
     </div>
   </div>
 
-  <!-- 【方法A】JSON入出力モーダル（チャット画面のGeminiと手動でデータ連携） -->
+  <!-- JSON入出力モーダル -->
   <div class="modal-backdrop" id="ai-json-modal">
     <div class="modal-card">
       <div class="modal-header">
@@ -514,7 +520,6 @@
           <button class="btn" id="btn-copy-layer-json" style="justify-content:center; padding:8px;">
             📄 現在の階層だけコピー
           </button>
-          <!-- 追加: クリップボードから貼り付けて即座に反映するボタン -->
           <button class="btn btn-warning" id="btn-paste-replace-json" style="flex:1; justify-content:center; padding:8px;">
             📋 クリップボードの内容に変更する
           </button>
@@ -522,12 +527,12 @@
             📥 ② 貼り付けたJSONを設計に反映する
           </button>
         </div>
-        <textarea id="ai-json-textarea" class="form-control bulk-class-editor" rows="12" placeholder="ここに設計JSONが表示されます（またはGeminiが生成したJSONをここに貼り付けます）"></textarea>
+        <textarea id="ai-json-textarea" class="form-control bulk-class-editor" rows="12" placeholder="ここにJSONが表示されます"></textarea>
       </div>
     </div>
   </div>
 
-  <!-- 【方法B】アプリ内蔵 Gemini AI 自動生成・編集アシスタントモーダル -->
+  <!-- AIアシスタントモーダル -->
   <div class="modal-backdrop" id="ai-assist-modal">
     <div class="modal-card">
       <div class="modal-header">
@@ -541,7 +546,7 @@
 
         <div class="form-group" style="margin-bottom:0;">
           <label>AIへの指示内容（プロンプト）</label>
-          <textarea id="ai-prompt-input" class="form-control" rows="4" placeholder="例:&#10;・カードを引いてからコスト判定し、足りれば召喚、足りなければエラー表示するフローを追加して&#10;・CardBaseクラスを継承する「MonsterCard」と「SpellCard」クラスを作成し、適切な変数と関数を持たせて"></textarea>
+          <textarea id="ai-prompt-input" class="form-control" rows="4" placeholder="例: カートを引いてからコスト判定するフローを追加して"></textarea>
         </div>
 
         <div style="display:flex; justify-content:flex-end; gap:8px;">

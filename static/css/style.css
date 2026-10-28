@@ -62,6 +62,31 @@ header::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 2px; }
   font-weight: 700;
 }
 
+/* プロジェクト▼ドロップダウンメニュー */
+.dropdown {
+  position: relative;
+  display: inline-block;
+}
+.dropdown-content {
+  display: none;
+  position: absolute;
+  left: 0;
+  top: 100%;
+  background: var(--panel-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+  z-index: 100;
+  min-width: 190px;
+  padding: 4px;
+  margin-top: 4px;
+}
+.dropdown-content.show {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
 .btn {
   background: #2c313a;
   color: var(--text-main);
@@ -150,13 +175,13 @@ header::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 2px; }
 
 /* Breadcrumb Bar */
 .subbar {
-  height: 34px;
+  height: 36px;
   background: #1d2026;
   border-bottom: 1px solid var(--border-color);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 12px;
+  padding: 0 10px;
   font-size: 12px;
   z-index: 25;
   gap: 12px;
@@ -194,6 +219,8 @@ header::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 2px; }
   position: relative;
   overflow: hidden;
 }
+
+/* 左右パネルのスクロールバーを小さくて使いやすいものにする */
 .side-panel {
   background: var(--panel-bg);
   display: flex;
@@ -201,7 +228,23 @@ header::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 2px; }
   overflow-y: auto;
   z-index: 20;
   flex-shrink: 0;
+  scrollbar-width: thin;
+  scrollbar-color: #4b5563 var(--panel-bg);
 }
+.side-panel::-webkit-scrollbar {
+  width: 5px;
+}
+.side-panel::-webkit-scrollbar-track {
+  background: transparent;
+}
+.side-panel::-webkit-scrollbar-thumb {
+  background: #4b5563;
+  border-radius: 3px;
+}
+.side-panel::-webkit-scrollbar-thumb:hover {
+  background: #6b7280;
+}
+
 #left-panel { width: 240px; min-width: 160px; max-width: 450px; border-right: 1px solid var(--border-color); }
 #right-panel { width: 320px; min-width: 220px; max-width: 560px; border-left: 1px solid var(--border-color); }
 .side-panel.hidden { display: none !important; }
@@ -295,7 +338,7 @@ header::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 2px; }
   box-shadow: 0 2px 6px rgba(0,0,0,0.4);
 }
 
-/* キャンバス上のクラスノード内・直接編集可能なスプレッドシート型GUI */
+/* クラス図GUI用スタイル */
 .cls-title-input {
   background: transparent;
   border: 1px solid transparent;
@@ -328,9 +371,7 @@ header::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 2px; }
   pointer-events: auto;
   white-space: nowrap;
 }
-.cls-sub-spawn-btn:hover {
-  background: #059669;
-}
+.cls-sub-spawn-btn:hover { background: #059669; }
 
 .cls-gui-section-header {
   display: flex;
@@ -353,9 +394,7 @@ header::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 2px; }
   cursor: pointer;
   pointer-events: auto;
 }
-.cls-gui-add-btn:hover {
-  background: #6d28d9;
-}
+.cls-gui-add-btn:hover { background: #6d28d9; }
 .cls-gui-member-row {
   display: flex;
   align-items: center;
@@ -383,10 +422,7 @@ header::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 2px; }
   background: rgba(109, 40, 217, 0.2);
   color: #4c1d95;
 }
-.cls-gui-access-btn:hover {
-  background: #7c3aed;
-  color: #fff;
-}
+.cls-gui-access-btn:hover { background: #7c3aed; color: #fff; }
 .cls-inline-input {
   background: transparent;
   border: 1px solid transparent;
@@ -398,16 +434,8 @@ header::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 2px; }
   min-width: 30px;
   user-select: text;
 }
-.cls-inline-input:hover {
-  background: rgba(255, 255, 255, 0.65);
-  border-color: #cbd5e1;
-}
-.cls-inline-input:focus {
-  background: #ffffff;
-  border-color: #3b82f6;
-  outline: none;
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25);
-}
+.cls-inline-input:hover { background: rgba(255, 255, 255, 0.65); border-color: #cbd5e1; }
+.cls-inline-input:focus { background: #ffffff; border-color: #3b82f6; outline: none; box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25); }
 .cls-inline-name { flex: 1.2; width: 65px; font-weight: 600; }
 .cls-inline-args { flex: 1.1; width: 55px; color: #334155; }
 .cls-inline-type { flex: 0.9; width: 48px; color: #0f766e; font-weight: 600; }
@@ -428,11 +456,8 @@ header::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 2px; }
   flex-shrink: 0;
 }
 .cls-gui-member-row:hover .cls-gui-del-btn,
-.cls-gui-member-row:focus-within .cls-gui-del-btn {
-  opacity: 1;
-}
+.cls-gui-member-row:focus-within .cls-gui-del-btn { opacity: 1; }
 
-/* 右パネルの一括テキストエディタ (Mermaid / draw.io スタイル) */
 .bulk-class-editor {
   font-family: 'Consolas', 'Meiryo', monospace !important;
   font-size: 12px !important;
@@ -442,12 +467,8 @@ header::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 2px; }
   color: #f3f4f6 !important;
   resize: vertical;
 }
-.bulk-class-editor:focus {
-  border-color: #8b5cf6 !important;
-  outline: none;
-}
+.bulk-class-editor:focus { border-color: #8b5cf6 !important; outline: none; }
 
-/* 右パネルのクラスメンバ構造化入力＆編集リスト */
 .struct-input-row {
   display: flex;
   gap: 4px;
@@ -458,7 +479,7 @@ header::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 2px; }
   width: 82px !important;
   flex-shrink: 0;
   padding: 5px 4px !important;
-  font-family: 'Consolas', monospace;
+  font-family: 'Consolas', 'Meiryo', monospace;
   font-size: 11px !important;
 }
 .member-edit-list {
@@ -485,14 +506,13 @@ header::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 2px; }
   padding: 3px 5px;
   border-radius: 4px;
   font-size: 11px;
-  font-family: 'Consolas', monospace;
+  font-family: 'Consolas', 'Meiryo', monospace;
 }
 .member-edit-row select { width: 68px; flex-shrink: 0; }
 .member-edit-row input.m-name { flex: 1.2; min-width: 50px; }
 .member-edit-row input.m-args { flex: 1; min-width: 45px; }
 .member-edit-row input.m-type { flex: 0.9; min-width: 42px; }
 
-/* 逆参照（被リンク）リスト */
 .backlinks-list {
   display: flex;
   flex-direction: column;
@@ -514,12 +534,8 @@ header::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 2px; }
   gap: 6px;
   transition: 0.15s;
 }
-.backlink-item:hover {
-  border-color: #8b5cf6;
-  background: rgba(139, 92, 246, 0.2);
-}
+.backlink-item:hover { border-color: #8b5cf6; background: rgba(139, 92, 246, 0.2); }
 
-/* Layer Tree */
 .tree-item {
   padding: 5px 8px;
   border-radius: 5px;
@@ -533,7 +549,6 @@ header::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 2px; }
 .tree-item:hover { background: #2c313a; }
 .tree-item.active { background: rgba(59, 130, 246, 0.25); color: #93c5fd; font-weight: 600; }
 
-/* Canvas Container */
 #canvas-container {
   flex: 1;
   position: relative;
@@ -564,7 +579,6 @@ header::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 2px; }
   box-shadow: 0 2px 8px rgba(0,0,0,0.25);
 }
 
-/* Floating Mini Toolbar */
 #mini-toolbar {
   position: absolute;
   display: none;
@@ -609,7 +623,6 @@ header::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 2px; }
 .align-group button:hover { background: #3e4451; }
 .align-group button.active { background: var(--accent); color: #fff; font-weight: bold; }
 
-/* Right-Click Context Menu */
 #context-menu {
   position: absolute;
   display: none;
@@ -631,11 +644,14 @@ header::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 2px; }
   display: flex;
   align-items: center;
   gap: 8px;
+  background: transparent;
+  border: none;
+  width: 100%;
+  text-align: left;
 }
 .ctx-item:hover { background: var(--accent); color: #fff; }
 .ctx-divider { height: 1px; background: #333842; margin: 4px 0; }
 
-/* ダブルクリック周辺オブジェクト選択ポップアップ */
 #nearby-picker {
   position: absolute;
   display: none;
@@ -681,7 +697,6 @@ header::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 2px; }
 }
 .nearby-item:hover { background: var(--accent); color: #fff; }
 
-/* Inline Text Editor */
 #inline-editor {
   position: absolute;
   display: none;
@@ -697,7 +712,6 @@ header::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 2px; }
   overflow: hidden;
 }
 
-/* Property Form Controls */
 .form-group { margin-bottom: 12px; }
 .form-group label { display: block; font-size: 11px; color: var(--text-sub); margin-bottom: 4px; }
 .form-control {
@@ -720,7 +734,6 @@ header::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 2px; }
   margin-bottom: 12px;
 }
 
-/* Project Selector Modal */
 .modal-backdrop {
   position: fixed;
   inset: 0;
@@ -794,7 +807,6 @@ header::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 2px; }
 .project-item-title { font-size: 14px; font-weight: 700; color: #60a5fa; }
 .project-item-meta { font-size: 11px; color: var(--text-sub); }
 
-/* Highlight Pulse Animation for Jump Target */
 @keyframes targetPulse {
   0% { filter: drop-shadow(0 0 0px #8b5cf6); }
   50% { filter: drop-shadow(0 0 18px #8b5cf6); }
@@ -811,7 +823,6 @@ header::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 2px; }
   box-shadow: 0 0 0 2px #ca8a04;
 }
 
-/* Toast Notification */
 #toast {
   position: fixed;
   bottom: 20px;
@@ -829,3 +840,7 @@ header::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 2px; }
   z-index: 120;
 }
 #toast.show { opacity: 1; }
+
+@media (max-width: 768px) {
+  .desktop-hint { display: none; }
+}

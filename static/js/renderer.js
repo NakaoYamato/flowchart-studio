@@ -1,7 +1,7 @@
 /**************************************************************
- * renderer.js : SVG描画エンジン（クラス内スプレッドシート型直接入力対応）
+ * renderer.js : SVG描画エンジン（テキスト編集優先・プラスから即入力対応）
  **************************************************************/
-let pendingFocusSelector = null; // Enter連続追加時に次の入力欄へ自動フォーカスするためのセレクタ
+let pendingFocusSelector = null;
 
 function updateTypeSuggestionsDatalist() {
   const dl = document.getElementById('type-suggestions');
@@ -126,7 +126,6 @@ function render() {
   updatePropertyPanel();
   updateMiniToolbarPosition();
 
-  // Enter連続追加などで指定された入力欄があれば即座にフォーカス＆全選択
   if (pendingFocusSelector) {
     const targetInput = document.querySelector(pendingFocusSelector);
     pendingFocusSelector = null;
@@ -199,7 +198,6 @@ function createNodeSVG(node) {
   hoverPad.setAttribute('fill', 'transparent');
   g.appendChild(hoverPad);
 
-  // 1. 単一タグピル表示
   if (activeTag) {
     const pillW = Math.max(48, activeTag.name.length * 11 + 18);
     const pillG = document.createElementNS('http://www.w3.org/2000/svg', 'g');
@@ -227,7 +225,6 @@ function createNodeSVG(node) {
     g.appendChild(pillG);
   }
 
-  // 2. 本体描画
   if (isMemo) {
     const fold = 16;
     const w = node.width, h = node.height;
@@ -254,7 +251,6 @@ function createNodeSVG(node) {
     memoTag.textContent = node.parentObjectId ? '📎 子メモ (仕様)' : '📝 メモ';
     g.appendChild(memoTag);
   } else if (isClass) {
-    // UML クラスノード（クリック1回で即入力・Enterで次行連続追加できるスプレッドシート型UI）
     const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
     rect.setAttribute('width', node.width);
     rect.setAttribute('height', node.height);
@@ -287,7 +283,6 @@ function createNodeSVG(node) {
     wrapper.style.fontSize = `${node.fontSize || 13}px`;
     wrapper.style.color = '#1e293b';
 
-    // クラス名ヘッダー（直接クリック編集 input ＋ 右上に「＋子クラス」派生ボタン）
     const titleDiv = document.createElement('div');
     titleDiv.style.height = '34px';
     titleDiv.style.display = 'flex';
@@ -309,7 +304,7 @@ function createNodeSVG(node) {
     titleInput.setAttribute('data-cls-title', node.id);
     titleInput.value = node.text || 'ClassName';
     titleInput.disabled = locked;
-    titleInput.title = 'クリックしてクラス名を直接変更 (Enterで変数追加へ)';
+    titleInput.title = 'クリックしてクラス名を直接変更';
     titleInput.addEventListener('mousedown', (ev) => {
       ev.stopPropagation();
       if (!selectedNodeIds.has(node.id)) {
@@ -347,7 +342,6 @@ function createNodeSVG(node) {
     }
     wrapper.appendChild(titleDiv);
 
-    // --- メンバ変数セクション ---
     const fieldHeader = document.createElement('div');
     fieldHeader.className = 'cls-gui-section-header';
     fieldHeader.innerHTML = `<span>フィールド (変数)</span>`;
@@ -391,7 +385,6 @@ function createNodeSVG(node) {
     }
     wrapper.appendChild(fieldsDiv);
 
-    // --- 関数（メソッド）セクション ---
     const methodHeader = document.createElement('div');
     methodHeader.className = 'cls-gui-section-header';
     methodHeader.innerHTML = `<span>メソッド (関数)</span>`;
@@ -484,7 +477,6 @@ function createNodeSVG(node) {
     }
   }
 
-  // 3. テキスト表示（クラスノード以外）
   if (!isClass) {
     const fo = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
     const leftPad = (isContainer && locked) ? 34 : 8;
@@ -515,7 +507,6 @@ function createNodeSVG(node) {
     g.appendChild(fo);
   }
 
-  // 4. ロックバッジ
   if (locked && !node.isParentProxy) {
     const lockBadge = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     lockBadge.setAttribute('transform', `translate(6, 6)`);
@@ -547,7 +538,6 @@ function createNodeSVG(node) {
     g.appendChild(lockBadge);
   }
 
-  // 5. リンクボタン
   if (node.linkTargetNodeId) {
     const targetInfo = findNodeAcrossProject(node.linkTargetNodeId);
     let targetName = 'リンク切れ';
@@ -597,7 +587,6 @@ function createNodeSVG(node) {
     g.appendChild(linkG);
   }
 
-  // 6. 矩形右上の内部階層移動バッジ
   if (!isContainer && !isMemo && !isClass && !node.isParentProxy) {
     const childLayer = node.childLayerId ? projectData.layers[node.childLayerId] : null;
     const childCount = childLayer ? childLayer.nodes.filter(n => !n.isParentProxy).length : 0;
@@ -656,8 +645,9 @@ function createNodeSVG(node) {
     const now = Date.now();
     if (lastClickInfo.id === node.id && (now - lastClickInfo.time) < 350) {
       lastClickInfo = { id: null, time: 0 };
+      // 矩形自体のダブルクリック時は、余程近くにエッジの当たり判定がない限りテキスト編集を最優先
       const worldPt = screenToWorld(ev.clientX, ev.clientY);
-      const nearbyItems = findNearbyObjects(worldPt.x, worldPt.y, 75);
+      const nearbyItems = findNearbyObjects(worldPt.x, worldPt.y, 40); // 距離を40pxと狭くして矩形編集を優先
       const hasEdgesNearby = nearbyItems.some(item => item.kind === 'edge');
       if (hasEdgesNearby) {
         openNearbyPicker(ev.clientX, ev.clientY, nearbyItems, node);
@@ -719,7 +709,6 @@ function createNodeSVG(node) {
   return g;
 }
 
-// クラスノード内の各変数・関数行：クリックするだけで直接入力・Tab移動・Enterで次行追加できるDOM
 function createClassMemberRowDOM(classNode, member, kind, locked) {
   const isMethod = (kind === 'method');
   normalizeClassMember(member, isMethod);
@@ -730,11 +719,10 @@ function createClassMemberRowDOM(classNode, member, kind, locked) {
     row.classList.add('method-highlight');
   }
 
-  // 1. アクセス修飾子バッジ (+ / - / #) ワンクリック切替
   const accBtn = document.createElement('span');
   accBtn.className = 'cls-gui-access-btn';
   accBtn.textContent = ACCESS_SYMBOLS[member.access] || '+';
-  accBtn.title = `アクセス修飾子: ${member.access} (クリックで + / - / # 切替)`;
+  accBtn.title = `アクセス修飾子: ${member.access} (クリックで切替)`;
   if (!locked) {
     accBtn.addEventListener('mousedown', (ev) => ev.stopPropagation());
     accBtn.addEventListener('click', (ev) => {
@@ -758,7 +746,6 @@ function createClassMemberRowDOM(classNode, member, kind, locked) {
     }
   };
 
-  // 2. 名前入力欄 (変数名 or 関数名)
   const nameInput = document.createElement('input');
   nameInput.type = 'text';
   nameInput.className = 'cls-inline-input cls-inline-name';
@@ -775,7 +762,6 @@ function createClassMemberRowDOM(classNode, member, kind, locked) {
   });
 
   if (isMethod) {
-    // 関数の場合： name ( args ) : returnType
     const lp = document.createElement('span');
     lp.className = 'cls-sep';
     lp.textContent = '(';
@@ -785,7 +771,6 @@ function createClassMemberRowDOM(classNode, member, kind, locked) {
     argsInput.className = 'cls-inline-input cls-inline-args';
     argsInput.value = member.args || '';
     argsInput.placeholder = '引数';
-    argsInput.title = '引数 (例: power: int)';
     argsInput.disabled = locked;
     argsInput.addEventListener('mousedown', selectThisClass);
     argsInput.addEventListener('change', () => {
@@ -804,7 +789,7 @@ function createClassMemberRowDOM(classNode, member, kind, locked) {
     typeInput.className = 'cls-inline-input cls-inline-type';
     typeInput.setAttribute('list', 'type-suggestions');
     typeInput.value = member.returnType || 'void';
-    typeInput.placeholder = '戻り値型';
+    typeInput.placeholder = '戻り値';
     typeInput.disabled = locked;
     typeInput.addEventListener('mousedown', selectThisClass);
     typeInput.addEventListener('change', () => {
@@ -814,7 +799,6 @@ function createClassMemberRowDOM(classNode, member, kind, locked) {
       render();
     });
 
-    // Enterキーで次の関数を連続追加
     const handleMethodEnter = (ev) => {
       if (ev.key === 'Enter') {
         ev.preventDefault();
@@ -835,7 +819,6 @@ function createClassMemberRowDOM(classNode, member, kind, locked) {
     row.appendChild(rp);
     row.appendChild(typeInput);
   } else {
-    // 変数の場合： name : dataType
     const colon = document.createElement('span');
     colon.className = 'cls-sep';
     colon.textContent = ':';
@@ -855,7 +838,6 @@ function createClassMemberRowDOM(classNode, member, kind, locked) {
       render();
     });
 
-    // Enterキーで次の変数を連続追加、Backspace空欄で削除
     const handleFieldKey = (ev) => {
       if (ev.key === 'Enter') {
         ev.preventDefault();
@@ -873,12 +855,11 @@ function createClassMemberRowDOM(classNode, member, kind, locked) {
     row.appendChild(typeInput);
   }
 
-  // 3. 削除ボタン (✕)
   if (!locked) {
     const delBtn = document.createElement('button');
     delBtn.className = 'cls-gui-del-btn';
     delBtn.textContent = '✕';
-    delBtn.title = 'この行を削除';
+    delBtn.title = '削除';
     delBtn.addEventListener('mousedown', (ev) => ev.stopPropagation());
     delBtn.addEventListener('click', (ev) => {
       ev.stopPropagation();
@@ -1075,146 +1056,13 @@ function createOuterPortsAndQuickCreateSVG(node) {
   return g;
 }
 
-function createEdgeSVG(edge) {
-const layer = currentLayer();
-  const src = layer.nodes.find(n => n.id === edge.source);
-  const tgt = layer.nodes.find(n => n.id === edge.target);
-  if (!src || !tgt) return null;
-
-  const p1 = getPortCoords(src, edge.sourcePort);
-  const p2 = getPortCoords(tgt, edge.targetPort);
-  const d = computeCurvePath(p1.x, p1.y, p2.x, p2.y, edge.sourcePort, edge.targetPort);
-  const isSelected = selectedEdgeId === edge.id;
-  const isLocked = Boolean(edge.locked); // 追加: ロック状態の判定
-  const relType = edge.relationType || 'normal';
-  const isInherit = (relType === 'inheritance' || relType === 'implementation');
-  const isDashed = (relType === 'implementation' || relType === 'dependency');
-
-  const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-  g.style.cursor = 'pointer';
-
-  const hit = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-  hit.setAttribute('d', d);
-  hit.setAttribute('stroke', 'transparent');
-  hit.setAttribute('stroke-width', '22');
-  hit.setAttribute('fill', 'none');
-  g.appendChild(hit);
-
-  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-  path.setAttribute('d', d);
-  // ロック時は少し色を抑え、選択時はオレンジまたは青に
-  path.setAttribute('stroke', isSelected ? (isLocked ? '#f59e0b' : '#3b82f6') : (edge.color || '#475569'));
-  path.setAttribute('stroke-width', isSelected ? '3' : '2.2');
-  if (isDashed) {
-    path.setAttribute('stroke-dasharray', '6,4');
-  }
-  path.setAttribute('fill', 'none');
-
-  let markerUrl = isSelected ? 'url(#arrowhead-selected)' : 'url(#arrowhead)';
-  if (isInherit) {
-    markerUrl = isSelected ? 'url(#arrowhead-inheritance-selected)' : 'url(#arrowhead-inheritance)';
-  }
-  path.setAttribute('marker-end', markerUrl);
-  g.appendChild(path);
-
-  const mx = (p1.x + p2.x) / 2;
-  const my = (p1.y + p2.y) / 2;
-
-  if (edge.label) {
-    const txt = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-    txt.setAttribute('x', mx);
-    txt.setAttribute('y', my - 10);
-    txt.setAttribute('text-anchor', 'middle');
-    txt.setAttribute('fill', '#1e293b');
-    txt.setAttribute('font-size', '12px');
-    txt.setAttribute('font-weight', '600');
-    txt.textContent = edge.label + (isLocked ? ' 🔒' : ''); // ロック時は鍵アイコン
-    g.appendChild(txt);
-  }
-
-  // ロックされていない場合のみ、中継ノード追加ボタン(+)と継承切替ボタン(▷)を表示
-  if (isSelected && !isLocked) {
-    const midBtn = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-    midBtn.setAttribute('transform', `translate(${mx - 14}, ${my})`);
-    midBtn.style.cursor = 'pointer';
-
-    const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-    c.setAttribute('r', 10);
-    c.setAttribute('fill', '#2563eb');
-    c.setAttribute('stroke', '#ffffff');
-    c.setAttribute('stroke-width', '2');
-    midBtn.appendChild(c);
-
-    const plus = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-    plus.setAttribute('x', 0);
-    plus.setAttribute('y', 4);
-    plus.setAttribute('text-anchor', 'middle');
-    plus.setAttribute('fill', '#ffffff');
-    plus.setAttribute('font-size', '13px');
-    plus.setAttribute('font-weight', 'bold');
-    plus.textContent = '+';
-    midBtn.appendChild(plus);
-
-    midBtn.addEventListener('mousedown', (ev) => ev.stopPropagation());
-    midBtn.addEventListener('click', (ev) => {
-      ev.stopPropagation();
-      insertNodeBetweenEdge(edge.id);
-    });
-    g.appendChild(midBtn);
-
-    const relBtn = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-    relBtn.setAttribute('transform', `translate(${mx + 14}, ${my})`);
-    relBtn.style.cursor = 'pointer';
-
-    const rc = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-    rc.setAttribute('r', 10);
-    rc.setAttribute('fill', isInherit ? '#7c3aed' : '#475569');
-    rc.setAttribute('stroke', '#ffffff');
-    rc.setAttribute('stroke-width', '2');
-    relBtn.appendChild(rc);
-
-    const rTxt = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-    rTxt.setAttribute('x', 0);
-    rTxt.setAttribute('y', 4);
-    rTxt.setAttribute('text-anchor', 'middle');
-    rTxt.setAttribute('fill', '#ffffff');
-    rTxt.setAttribute('font-size', '10px');
-    rTxt.setAttribute('font-weight', 'bold');
-    rTxt.textContent = '▷';
-    relBtn.appendChild(rTxt);
-
-    relBtn.addEventListener('mousedown', (ev) => ev.stopPropagation());
-    relBtn.addEventListener('click', (ev) => {
-      ev.stopPropagation();
-      recordHistory();
-      edge.relationType = (edge.relationType === 'inheritance') ? 'normal' : 'inheritance';
-      render();
-      showToast(edge.relationType === 'inheritance' ? '▷ 継承（extends）矢印に変更しました' : '➔ 通常矢印に変更しました');
-    });
-    g.appendChild(relBtn);
-  }
-
-  g.addEventListener('mousedown', (ev) => {
-    if (ev.button !== 0) return;
-    ev.stopPropagation();
-    hideContextMenu();
-    hideNearbyPicker();
-    commitInlineEdit();
-    selectedNodeIds.clear();
-    selectedEdgeId = edge.id;
-    render();
-  });
-
-  return g;
-}
-
 function enterNodeLayer(nodeId) {
   commitInlineEdit();
   const layer = currentLayer();
   const node = layer.nodes.find(n => n.id === nodeId);
   if (!node || node.type === 'container' || node.type === 'memo' || node.type === 'class' || node.isParentProxy) return;
 
-  recordHistory();
+  recordHistory(); // 階層変更をUndo/Redoに記録
   if (!node.childLayerId || !projectData.layers[node.childLayerId]) {
     const newLayerId = uid('layer');
     node.childLayerId = newLayerId;
@@ -1236,7 +1084,7 @@ function switchLayer(layerId, saveHist = true) {
   if (projectData.currentLayerId !== CLASS_LAYER_ID && layerId === CLASS_LAYER_ID) {
     lastFlowLayerId = projectData.currentLayerId;
   }
-  if (saveHist && projectData.currentLayerId !== layerId) recordHistory();
+  if (saveHist && projectData.currentLayerId !== layerId) recordHistory(); // 階層変更時の履歴記録
   projectData.currentLayerId = layerId;
   ensureParentProxyNode(projectData.layers[layerId]);
   selectedNodeIds.clear();
@@ -1252,7 +1100,7 @@ function renderBreadcrumbs() {
   if (isClassMode()) {
     const sp = document.createElement('span');
     sp.className = 'crumb active';
-    sp.textContent = '🧩 クラス図 (文字クリックで直接入力 / Enterで連続追加 / 右パネルでテキスト一括編集)';
+    sp.textContent = '🧩 クラス図';
     container.appendChild(sp);
     return;
   }
