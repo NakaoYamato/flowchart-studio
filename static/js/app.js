@@ -1100,3 +1100,26 @@ function createEdgeSVG(edge) {
 
   return g;
 }
+/* ==============================================================
+ * ミニツールバーの位置・表示更新
+ * ============================================================== */
+function updateMiniToolbarPosition() {
+  const layer = currentLayer();
+  if (!layer || !miniToolbar) return;
+  const selectedNodes = layer.nodes.filter(n => selectedNodeIds.has(n.id));
+  if (selectedNodes.length === 0) {
+    miniToolbar.style.display = 'none';
+    return;
+  }
+
+  const minX = Math.min(...selectedNodes.map(n => n.x));
+  const maxX = Math.max(...selectedNodes.map(n => n.x + n.width));
+  const minY = Math.min(...selectedNodes.map(n => n.y));
+
+  const centerX = ((minX + maxX) / 2) * zoom + panX;
+  const topY = minY * zoom + panY - 18;
+
+  miniToolbar.style.display = 'flex';
+  miniToolbar.style.left = `${centerX}px`;
+  miniToolbar.style.top = `${Math.max(48, topY)}px`;
+}
