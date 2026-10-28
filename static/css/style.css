@@ -29,10 +29,8 @@ header {
   justify-content: space-between;
   padding: 4px 10px;
   gap: 8px;
-  z-index: 30;
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: thin;
+  z-index: 100;
+  overflow: visible; /* ← ここを overflow: visible; に変更するとメニューが下に飛び出て表示されます！ */
 }
 header::-webkit-scrollbar { height: 4px; }
 header::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 2px; }
