@@ -887,3 +887,33 @@ document.getElementById('btn-toggle-right').addEventListener('click', () => {
   rightPanel.classList.toggle('hidden');
   rightResizer.classList.toggle('hidden');
 });
+
+/* --- インラインテキスト編集の確定 --- */
+function commitInlineEdit() {
+  if (!editingNodeId) return;
+  const node = currentLayer().nodes.find(n => n.id === editingNodeId);
+
+  if (node && !isNodeLocked(node)) {
+    if (editingMemberSpec) {
+      // クラス内の変数または関数のインライン編集確定
+      const isMethod = (editingMemberSpec.kind === 'method');
+      const list = isMethod ? (node.methods || []) : (node.fields || []);
+      const targetMember = list.find(m => m.id === editingMemberSpec.memberId);
+      if (targetMember) {
+        recordHistory();
+        parseInlineMemberText(targetMember, inlineEditor.value, isMethod);
+      }
+    } else if (node.text !== inlineEditor.value) {
+      recordHistory();
+      node.text = inlineEditor.value;
+      if (node.childLayerId && projectData.layers[node.childLayerId]) {
+        projectData.layers[node.childLayerId].name = node.text || '無題の階層';
+      }
+    }
+  }
+
+  editingNodeId = null;
+  editingMemberSpec = null;
+  inlineEditor.style.display = 'none';
+  render();
+}
