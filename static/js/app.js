@@ -18,6 +18,21 @@ document.getElementById('btn-mode-class').addEventListener('click', () => {
 const projectMenuBtn = document.getElementById('btn-project-menu');
 const projectDropdownContent = document.getElementById('project-dropdown-content');
 
+if (projectMenuBtn && projectDropdownContent) {
+  projectMenuBtn.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    projectDropdownContent.classList.toggle('show');
+  });
+
+  window.addEventListener('click', () => {
+    if (projectDropdownContent.classList.contains('show')) {
+      projectDropdownContent.classList.remove('show');
+    }
+  });
+
+  projectDropdownContent.addEventListener('mousedown', (ev) => ev.stopPropagation());
+}
+
 projectMenuBtn.addEventListener('click', (ev) => {
   ev.stopPropagation();
   projectDropdownContent.classList.toggle('show');
@@ -1123,3 +1138,27 @@ function updateMiniToolbarPosition() {
   miniToolbar.style.left = `${centerX}px`;
   miniToolbar.style.top = `${Math.max(48, topY)}px`;
 }
+
+function handleInitialRoute(pushHistory = false) {
+  const path = window.location.pathname;
+  const params = new URLSearchParams(window.location.search);
+
+  if (path.startsWith('/p/')) {
+    const pid = decodeURIComponent(path.slice(3).replace(/\/$/, ''));
+    if (pid) {
+      openProjectById(pid, pushHistory);
+      return;
+    }
+  } else if (params.get('p')) {
+    openProjectById(params.get('p'), pushHistory);
+    return;
+  }
+
+  // デフォルト（プロジェクトが指定されていない場合）
+  render();
+  projectModal.classList.add('open');
+  fetchProjectList();
+}
+
+// 起動時に実行
+handleInitialRoute(false);
