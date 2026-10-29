@@ -643,16 +643,7 @@ function createNodeSVG(node) {
     commitInlineEdit();
 
     const now = Date.now();
-    if (lastClickInfo.id === node.id && (now - lastClickInfo.time) < 350) {
-      lastClickInfo = { id: null, time: 0 };
-      // 矩形自体のダブルクリック時は、余程近くにエッジの当たり判定がない限りテキスト編集を最優先
-      const worldPt = screenToWorld(ev.clientX, ev.clientY);
-      const nearbyItems = findNearbyObjects(worldPt.x, worldPt.y, 40); // 距離を40pxと狭くして矩形編集を優先
-      const hasEdgesNearby = nearbyItems.some(item => item.kind === 'edge');
-      if (hasEdgesNearby) {
-        openNearbyPicker(ev.clientX, ev.clientY, nearbyItems, node);
-        return;
-      }
+    if (lastClickInfo.id === node.id && (now - lastClickInfo.time) < 350) {lastClickInfo = { id: null, time: 0 };
       if (isNodeLocked(node)) {
         showToast(node.isParentProxy ? '🔒 親階層ノードは編集できません' : '🔒 ロック中です (Ctrl+Lで解除)');
         return;

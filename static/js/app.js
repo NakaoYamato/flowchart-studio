@@ -535,22 +535,6 @@ svg.addEventListener('mousedown', (ev) => {
   }
 
   if (ev.button === 0) {
-    const now = Date.now();
-    const clickDist = Math.hypot(ev.clientX - lastCanvasClickPos.x, ev.clientY - lastCanvasClickPos.y);
-    if ((now - lastCanvasClickTime) < 360 && clickDist < 16) {
-      lastCanvasClickTime = 0;
-      const worldPt = screenToWorld(ev.clientX, ev.clientY);
-      const nearby = findNearbyObjects(worldPt.x, worldPt.y, 95);
-      if (nearby.length > 0) {
-        openNearbyPicker(ev.clientX, ev.clientY, nearby, null);
-        return;
-      } else {
-        showToast('この周辺（半径95px以内）にオブジェクトはありません');
-      }
-    }
-    lastCanvasClickTime = now;
-    lastCanvasClickPos = { x: ev.clientX, y: ev.clientY };
-
     if (!ev.shiftKey) {
       selectedNodeIds.clear();
       selectedEdgeId = null;
@@ -2208,6 +2192,15 @@ document.getElementById('ctx-insert-on-edge').addEventListener('click', () => {
 document.getElementById('ctx-paste').addEventListener('click', () => {
   hideContextMenu();
   pasteSelection(contextMenuWorldPos);
+});
+document.getElementById('ctx-nearby-picker').addEventListener('click', (ev) => {
+  hideContextMenu();
+  const nearby = findNearbyObjects(contextMenuWorldPos.x, contextMenuWorldPos.y, 120);
+  if (nearby.length > 0) {
+    openNearbyPicker(ev.clientX, ev.clientY, nearby, null);
+  } else {
+    showToast('この周辺（半径120px以内）にオブジェクトはありません');
+  }
 });
 
 document.getElementById('btn-undo').addEventListener('click', performUndo);
